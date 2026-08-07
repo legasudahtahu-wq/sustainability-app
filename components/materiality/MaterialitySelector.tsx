@@ -38,7 +38,7 @@ export function MaterialitySelector({ disclosures, selectedTopicIds, setSelected
     if (code === '2-1') return 'Melaporkan nama entitas hukum, sifat kepemilikan/bentuk hukum, lokasi kantor pusat, dan negara tempat entitas beroperasi.';
     if (code === '2-2') return 'Menjelaskan entitas (anak perusahaan, cabang, joint venture) yang dicakup dalam pelaporan keberlanjutan ini.';
     if (code === '2-3') return 'Menyebutkan periode pelaporan (misal: 1 Jan - 31 Des), frekuensi penerbitan, dan kontak penanggung jawab.';
-    if (code === '2-4') return 'Menjelaskan penyajian kembali informasi jika ada revisi atau koreksi dari data yang dilaporkan pada tahun-tahun sebelumnya.';
+    if (code === '2-4') return 'Menjelaskan penyajikan kembali informasi jika ada revisi atau koreksi dari data yang dilaporkan pada tahun-tahun sebelumnya.';
     if (code === '2-5') return 'Menjelaskan kebijakan dan praktik jaminan eksternal (external assurance) yang memvalidasi laporan ini.';
     if (code === '2-6') return 'Menjabarkan sektor operasi operasional, produk/jasa utama, pasar yang dilayani, serta struktur rantai pasokan perusahaan.';
     if (code === '2-9') return 'Menjelaskan struktur tata kelola perusahaan, termasuk komposisi dan komite-komite di bawah dewan direksi/komisaris.';
@@ -81,6 +81,8 @@ export function MaterialitySelector({ disclosures, selectedTopicIds, setSelected
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-[850px] print:h-auto print:border-none print:shadow-none">
+      
+      {/* HEADER */}
       <div className="p-6 border-b border-slate-200 bg-slate-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 z-10 print:bg-white print:border-b-2 print:border-slate-800">
         <div>
           <h2 className="text-xl font-bold text-slate-800">1. Pemilihan Topik Keberlanjutan</h2>
@@ -92,6 +94,7 @@ export function MaterialitySelector({ disclosures, selectedTopicIds, setSelected
         </div>
       </div>
 
+      {/* TAB NAVIGATION */}
       <div className="flex flex-wrap bg-slate-900 text-white text-[11px] font-bold font-mono print:hidden">
         <button onClick={() => setActiveTab('UNIVERSAL')} className={`flex-1 py-3 px-2 transition ${activeTab === 'UNIVERSAL' ? 'bg-emerald-600' : 'hover:bg-slate-800'}`}>GRI 2 (UMUM)</button>
         <button onClick={() => setActiveTab('200')} className={`flex-1 py-3 px-2 transition ${activeTab === '200' ? 'bg-emerald-600' : 'hover:bg-slate-800'}`}>GRI 200 (EKONOMI)</button>
@@ -100,7 +103,36 @@ export function MaterialitySelector({ disclosures, selectedTopicIds, setSelected
         <button onClick={() => setActiveTab('TCFD')} className={`flex-1 py-3 px-2 transition border-l border-slate-700 ${activeTab === 'TCFD' ? 'bg-blue-600' : 'bg-slate-800 hover:bg-slate-700 text-blue-300'}`}>IFRS S2 / TCFD</button>
       </div>
 
+      {/* CONTAINER UTAMA (PETUNJUK + DAFTAR TOPIK) */}
       <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50 print:bg-white print:overflow-visible print:p-0 print:mt-6">
+        
+        {/* KOTAK PETUNJUK SELEKSI TOPIK (4 PERTIMBANGAN) */}
+        <div className="mb-6 p-4 bg-emerald-50/80 border border-emerald-200 rounded-2xl shadow-sm print:hidden">
+          <div className="flex items-center gap-2 font-bold text-emerald-900 text-xs mb-2">
+            <span>💡</span>
+            <span>Panduan Memilih Topik (Centang jika memenuhi <u>MINIMAL SALAH SATU</u> dari 4 kriteria berikut):</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-[11px] text-slate-700">
+            <div className="bg-white p-3 rounded-xl border border-emerald-100 shadow-2xs">
+              <strong className="text-emerald-800 block mb-0.5">1. Relevansi Sektor</strong>
+              Isu umum atau rekomendasi untuk sektor bisnis Anda.
+            </div>
+            <div className="bg-white p-3 rounded-xl border border-emerald-100 shadow-2xs">
+              <strong className="text-emerald-800 block mb-0.5">2. Keterkaitan Operasi</strong>
+              Bersinggungan langsung dengan operasi / rantai pasok.
+            </div>
+            <div className="bg-white p-3 rounded-xl border border-emerald-100 shadow-2xs">
+              <strong className="text-emerald-800 block mb-0.5">3. Kepatuhan Regulasi</strong>
+              Diwajibkan oleh undang-undang, pemerintah, atau bursa.
+            </div>
+            <div className="bg-white p-3 rounded-xl border border-emerald-100 shadow-2xs">
+              <strong className="text-emerald-800 block mb-0.5">4. Sorotan Stakeholder</strong>
+              Dituntut oleh investor, masyarakat, atau konsumen.
+            </div>
+          </div>
+        </div>
+
+        {/* DAFTAR TOPIK */}
         <div className="space-y-3">
           {filteredDisclosures.map(d => {
             const isUniversal = d.gri_type === 'universal';
@@ -126,6 +158,7 @@ export function MaterialitySelector({ disclosures, selectedTopicIds, setSelected
         </div>
       </div>
 
+      {/* FOOTER */}
       <div className="p-5 border-t border-slate-200 bg-white flex justify-between items-center shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-10 print:hidden">
         <div>
           <span className="text-xs font-bold text-slate-600">Total Topik Terpilih: </span>

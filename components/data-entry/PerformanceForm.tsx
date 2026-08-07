@@ -19,6 +19,7 @@ const INTENSITY_UNITS = ['Ton Produk', 'Juta Rupiah (Pendapatan)', 'MWh (Output)
 
 export function PerformanceForm({ disclosures, materialTopicIds, managementData, setManagementData, perfData, setPerfData, sites, setSites, reportingYear }: PerformanceFormProps) {
   
+  // DILENGKAPI: Menggabungkan Topik Wajib (GRI 2) + Topik Hasil Sahkan Fase 2 (materialTopicIds)
   const activeDisclosures = disclosures.filter((d) => d.gri_type === 'universal' || materialTopicIds.includes(d.id));
   
   // JENDELA 4 TAHUN DINAMIS
@@ -57,7 +58,7 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
     if (code === '2-1') return { description: 'Melaporkan nama entitas hukum, sifat kepemilikan/bentuk hukum, lokasi kantor pusat, dan negara tempat entitas beroperasi.', unit: 'Naratif', isNumeric: false, type: 'narrative', policy: '', actions: '', target: '', evidence: '' };
     if (code === '2-2') return { description: 'Menjelaskan entitas (anak perusahaan, cabang, joint venture) yang dicakup dalam pelaporan keberlanjutan ini.', unit: 'Naratif', isNumeric: false, type: 'narrative', policy: '', actions: '', target: '', evidence: '' };
     if (code === '2-3') return { description: 'Menyebutkan periode pelaporan (misal: 1 Jan - 31 Des), frekuensi penerbitan, dan kontak penanggung jawab.', unit: 'Naratif', isNumeric: false, type: 'narrative', policy: '', actions: '', target: '', evidence: '' };
-    if (code === '2-4') return { description: 'Menjelaskan penyajian kembali informasi jika ada revisi atau koreksi dari data yang dilaporkan pada tahun-tahun sebelumnya.', unit: 'Naratif', isNumeric: false, type: 'narrative', policy: '', actions: '', target: '', evidence: '' };
+    if (code === '2-4') return { description: 'Menjelaskan penyajikan kembali informasi jika ada revisi atau koreksi dari data yang dilaporkan pada tahun-tahun sebelumnya.', unit: 'Naratif', isNumeric: false, type: 'narrative', policy: '', actions: '', target: '', evidence: '' };
     if (code === '2-5') return { description: 'Menjelaskan kebijakan dan praktik jaminan eksternal (external assurance) yang memvalidasi laporan ini.', unit: 'Naratif', isNumeric: false, type: 'narrative', policy: '', actions: '', target: '', evidence: '' };
     if (code === '2-6') return { description: 'Menjabarkan sektor operasi operasional, produk/jasa utama, pasar yang dilayani, serta struktur rantai pasokan perusahaan.', unit: 'Naratif', isNumeric: false, type: 'narrative', policy: '', actions: '', target: '', evidence: '' };
     if (code === '2-9') return { description: 'Menjelaskan struktur tata kelola perusahaan, termasuk komposisi dan komite-komite di bawah dewan direksi/komisaris.', unit: 'Naratif', isNumeric: false, type: 'narrative', policy: '', actions: '', target: '', evidence: '' };
@@ -94,6 +95,29 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
     const matchesSearch = d.disclosure_code.toLowerCase().includes(searchQuery.toLowerCase()) || (d.title_id || d.title_en || '').toLowerCase().includes(searchQuery.toLowerCase());
     return matchesCategory && matchesSearch;
   });
+
+  // PERBAIKAN BUG SINKRONISASI: Otomatis ganti activeTopicId jika topik aktif tidak ada di daftar hasil filter
+  useEffect(() => {
+    if (filteredDisclosures.length > 0) {
+      const isCurrentInFiltered = filteredDisclosures.some(d => d.id === activeTopicId);
+      if (!isCurrentInFiltered) {
+        setActiveTopicId(filteredDisclosures[0].id);
+      }
+    }
+  }, [categoryFilter, searchQuery, filteredDisclosures, activeTopicId]);
+
+  // Handler saat Tab diklik agar langsung mengaktifkan item pertama
+  const handleTabChange = (catId: 'ALL' | 'UNIVERSAL' | 'TOPIC') => {
+    setCategoryFilter(catId);
+    const newFiltered = activeDisclosures.filter(d => {
+      const matchesCat = catId === 'ALL' ? true : catId === 'UNIVERSAL' ? d.gri_type === 'universal' : catId === 'TOPIC' ? d.gri_type === 'topic' : true;
+      const matchesSearch = d.disclosure_code.toLowerCase().includes(searchQuery.toLowerCase()) || (d.title_id || d.title_en || '').toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesCat && matchesSearch;
+    });
+    if (newFiltered.length > 0) {
+      setActiveTopicId(newFiltered[0].id);
+    }
+  };
 
   const handleManagementChange = (field: 'policy' | 'actions', value: string) => { setIsSaved(false); setManagementData(prev => ({ ...prev, [activeTopicId]: { ...(prev[activeTopicId] || { policy: '', actions: '' }), [field]: value } })); };
   const handleNarrativePerfChange = (value: string) => { setIsSaved(false); setPerfData(prev => ({ ...prev, [activeTopicId]: { ...(prev[activeTopicId] || {}), [selectedYear]: { ...(prev[activeTopicId]?.[selectedYear] || {}), narrativeValue: value } } })); };
@@ -132,7 +156,7 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
     }));
   };
 
-  const currentTopic = activeDisclosures.find((d) => d.id === activeTopicId);
+  const currentTopic = activeDisclosures.find((d) => d.id === activeTopicId) || activeDisclosures[0];
   const details = getGriDetails(currentTopic?.disclosure_code || '');
   const currentMgmt = managementData[activeTopicId] || { policy: '', actions: '' };
   const currentPerf = perfData[activeTopicId]?.[selectedYear] || { sites: {}, narrativeValue: '', target: '', evidence: '', intensityData: { denominator: '', intensityUnit: '' }, tcfdData: {} };
@@ -322,13 +346,24 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
         </div>
       )}
 
+      {/* PANEL KIRI: DAFTAR INDIKATOR */}
       <div className="w-1/3 bg-slate-50 border-r border-slate-200 flex flex-col print:hidden">
         <div className="p-4 border-b border-slate-200 bg-white sticky top-0 z-10 space-y-3">
           <h3 className="font-bold text-slate-800 text-sm">Daftar Indikator</h3>
           <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Cari kode atau nama..." className="w-full p-2 text-xs border border-slate-300 rounded-lg bg-slate-50 outline-none" />
           <div className="flex gap-1 overflow-x-auto pb-1 text-[10px] font-bold mt-2">
-            {[{ id: 'ALL', label: 'Semua' }, { id: 'UNIVERSAL', label: 'GRI 2' }, { id: 'TOPIC', label: 'Topik Material' }].map(cat => (
-              <button key={cat.id} onClick={() => setCategoryFilter(cat.id as any)} className={`px-2 py-1.5 rounded-md transition whitespace-nowrap ${categoryFilter === cat.id ? 'bg-slate-800 text-white shadow-sm' : 'bg-slate-200/80 text-slate-600 hover:bg-slate-300'}`}>{cat.label}</button>
+            {[
+              { id: 'ALL', label: 'Semua' },
+              { id: 'UNIVERSAL', label: 'GRI 2' },
+              { id: 'TOPIC', label: 'Topik Material' }
+            ].map(cat => (
+              <button 
+                key={cat.id} 
+                onClick={() => handleTabChange(cat.id as any)} 
+                className={`px-2 py-1.5 rounded-md transition whitespace-nowrap ${categoryFilter === cat.id ? 'bg-slate-800 text-white shadow-sm' : 'bg-slate-200/80 text-slate-600 hover:bg-slate-300'}`}
+              >
+                {cat.label}
+              </button>
             ))}
           </div>
         </div>
@@ -345,6 +380,7 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
         </div>
       </div>
 
+      {/* PANEL KANAN: FORM ISIAN RINCIAN */}
       <div className="w-2/3 flex flex-col relative bg-slate-50/50 print:w-full print:bg-white">
         
         <div className="p-6 border-b border-slate-200 bg-slate-900 text-white shadow-md print:bg-white print:text-black print:border-b-2 print:border-slate-800 print:shadow-none">
@@ -399,7 +435,7 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
                   <button onClick={() => setShowAddSiteModal(true)} className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg hover:bg-emerald-100 transition shadow-sm">+ Tambah Lokasi (Site)</button>
                 )}
                 
-                {/* PEMILIH TAHUN DENGAN BEBAS EDIT DI SEMUA TAHUN */}
+                {/* PEMILIH TAHUN */}
                 <div className="flex bg-slate-100 rounded-lg p-1 border border-slate-200">
                   {years.map((year) => {
                     const isSelected = selectedYear === year;
@@ -646,6 +682,7 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
           </div>
         </div>
         
+        {/* FOOTER NAVIGASI */}
         <div className="p-4 border-t border-slate-200 bg-white flex justify-between items-center px-6 print:hidden">
           <div className="flex items-center gap-2">
             <button onClick={() => setActiveTopicId(activeDisclosures[Math.max(0, activeDisclosures.findIndex(d => d.id === activeTopicId) - 1)].id)} className="px-3 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition">← Prev</button>
