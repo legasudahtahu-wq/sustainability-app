@@ -17,7 +17,10 @@ interface ScoreData {
 }
 
 export function MaterialityMatrix({ disclosures, selectedTopicIds, setMaterialTopicIds, onNext }: MaterialityMatrixProps) {
-  const selectedTopics = disclosures.filter((d) => selectedTopicIds.includes(d.id));
+  const selectedTopics = useMemo(() => {
+    return disclosures.filter((d) => selectedTopicIds.includes(d.id));
+  }, [disclosures, selectedTopicIds]);
+
   const [scores, setScores] = useState<Record<string, ScoreData>>({});
   const [isLoaded, setIsLoaded] = useState(false);
   const threshold = 6.0;
@@ -29,23 +32,27 @@ export function MaterialityMatrix({ disclosures, selectedTopicIds, setMaterialTo
     if (savedScores) {
       try {
         parsedScores = JSON.parse(savedScores);
-      } catch (e) {}
+      } catch (e) {
+        console.error("Gagal membaca skor dari localStorage", e);
+      }
     }
 
-    const initialScores: Record<string, ScoreData> = { ...parsedScores };
-    selectedTopics.forEach((t) => {
-      if (!initialScores[t.id] || typeof initialScores[t.id].impact !== 'number' || typeof initialScores[t.id].financial !== 'number') {
-        initialScores[t.id] = { impact: 5.0, financial: 5.0, justification: '' };
+    const newScores: Record<string, ScoreData> = {};
+    
+    selectedTopicIds.forEach((id) => {
+      if (parsedScores[id] && typeof parsedScores[id].impact === 'number' && typeof parsedScores[id].financial === 'number') {
+        newScores[id] = parsedScores[id];
+      } else {
+        newScores[id] = { impact: 5.0, financial: 5.0, justification: '' };
       }
     });
 
-    setScores(initialScores);
+    setScores(newScores);
     setIsLoaded(true);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTopicIds]);
+  }, [selectedTopicIds]); 
 
   useEffect(() => {
-    if (isLoaded && Object.keys(scores).length > 0) {
+    if (isLoaded) {
       localStorage.setItem('esg_matrixScores_v2', JSON.stringify(scores));
     }
   }, [scores, isLoaded]);
@@ -75,7 +82,6 @@ export function MaterialityMatrix({ disclosures, selectedTopicIds, setMaterialTo
     onNext();
   };
 
-  // LOGIKA EKSPOR CSV/EXCEL
   const handleExportExcel = () => {
     let csvContent = "Kode Standar,Judul Pengungkapan,Dampak bagi Bisnis (X),Penting bagi Stakeholders (Y),Status Materialitas,Alasan / Justifikasi\n";
     
@@ -102,9 +108,10 @@ export function MaterialityMatrix({ disclosures, selectedTopicIds, setMaterialTo
   if (!isLoaded) return <div className="p-8 text-center text-emerald-600 font-bold">Memuat Matriks Visual...</div>;
 
   return (
-    <div className="space-y-6">
+    // 🛠️ PERBAIKAN PENTING: style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }} 
+    // Ini memaksa browser mencetak semua warna background dan elemen persis seperti di layar
+    <div className="space-y-6" style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
       
-      {/* HEADER DENGAN TOMBOL EKSPOR */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex justify-between items-center print:border-none print:shadow-none print:p-0">
         <div>
           <h2 className="text-lg font-bold text-slate-800">2. Penilaian Matriks Materialitas</h2>
@@ -116,7 +123,6 @@ export function MaterialityMatrix({ disclosures, selectedTopicIds, setMaterialTo
         </div>
       </div>
 
-      {/* PETUNJUK PENGISIAN & 4 PERTIMBANGAN MATERIALITAS */}
       <div className="bg-blue-50/70 border border-blue-200 p-5 rounded-2xl shadow-sm print:hidden">
         <h3 className="text-xs font-bold text-blue-900 uppercase tracking-wider mb-2 flex items-center gap-2">
           <span>💡</span> Petunjuk Penilaian & Pertimbangan Materialitas
@@ -144,8 +150,7 @@ export function MaterialityMatrix({ disclosures, selectedTopicIds, setMaterialTo
         </div>
       </div>
 
-      {/* MATRIKS VISUAL */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-8 print:border-slate-300">
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-8 print:border-none">
         
         <div className="w-full md:w-1/2 relative bg-slate-50 border border-slate-300 rounded-xl overflow-hidden aspect-square shadow-inner print:shadow-none">
           <div className="absolute left-4 top-4 text-[10px] font-bold text-slate-500 -rotate-90 origin-top-left transform translate-y-40 uppercase tracking-widest z-0">
@@ -155,15 +160,17 @@ export function MaterialityMatrix({ disclosures, selectedTopicIds, setMaterialTo
             Dampak bagi Bisnis (X)
           </div>
 
+          {/* 🛠️ PERBAIKAN: Menghapus print:bg-white agar warna kuadran tetap di-print */}
           <div className="absolute inset-0 grid grid-cols-2 grid-rows-2">
-            <div className="border-r border-b border-slate-200 bg-yellow-50/50 print:bg-white print:border-slate-400"></div>
-            <div className="border-b border-slate-200 bg-red-50/50 print:bg-slate-100 print:border-slate-400"></div>
-            <div className="border-r border-slate-200 bg-green-50/50 print:bg-white print:border-slate-400"></div>
-            <div className="bg-yellow-50/50 print:bg-white print:border-slate-400"></div>
+            <div className="border-r border-b border-slate-200 bg-yellow-50/50"></div>
+            <div className="border-b border-slate-200 bg-red-50/50"></div>
+            <div className="border-r border-slate-200 bg-green-50/50"></div>
+            <div className="bg-yellow-50/50"></div>
           </div>
           
-          <div className="absolute left-[60%] top-0 bottom-0 border-l-2 border-dashed border-red-400 opacity-60 z-0 print:border-black"></div>
-          <div className="absolute bottom-[60%] left-0 right-0 border-b-2 border-dashed border-red-400 opacity-60 z-0 print:border-black"></div>
+          {/* 🛠️ PERBAIKAN: Memastikan opacity menjadi solid (100) dan border tetap merah saat di-print */}
+          <div className="absolute left-[60%] top-0 bottom-0 border-l-2 border-dashed border-red-400 opacity-60 z-0 print:opacity-100 print:border-red-500"></div>
+          <div className="absolute bottom-[60%] left-0 right-0 border-b-2 border-dashed border-red-400 opacity-60 z-0 print:opacity-100 print:border-red-500"></div>
           
           {selectedTopics.map((topic, index) => {
             const score = scores[topic.id] || { impact: 5.0, financial: 5.0 };
@@ -173,7 +180,8 @@ export function MaterialityMatrix({ disclosures, selectedTopicIds, setMaterialTo
             return (
               <div 
                 key={topic.id}
-                className={`absolute w-7 h-7 -ml-3.5 -mb-3.5 rounded-full flex items-center justify-center text-[11px] font-bold text-white shadow-lg print:shadow-none print:border print:border-slate-800 transition-all duration-300 cursor-pointer ${isMaterial ? 'bg-red-500 z-10 scale-110 hover:scale-125' : 'bg-slate-400 opacity-80'}`}
+                // 🛠️ PERBAIKAN: Menghapus print:border-black dan print:shadow-none agar titik tetap merah persis seperti di layar
+                className={`absolute w-7 h-7 -ml-3.5 -mb-3.5 rounded-full flex items-center justify-center text-[11px] font-bold text-white shadow-lg transition-all duration-300 cursor-pointer ${isMaterial ? 'bg-red-500 z-10 scale-110 hover:scale-125' : 'bg-slate-400 opacity-80'}`}
                 style={{ left: `${(impactScore / 10) * 100}%`, bottom: `${(financialScore / 10) * 100}%` }}
                 title={`${topic.disclosure_code}\nBisnis (X): ${impactScore.toFixed(1)}\nStakeholders (Y): ${financialScore.toFixed(1)}`}
               >
@@ -193,14 +201,15 @@ export function MaterialityMatrix({ disclosures, selectedTopicIds, setMaterialTo
               const isMaterial = impactScore >= threshold || financialScore >= threshold;
               return (
                 <div key={topic.id} className="flex items-center gap-3 text-xs print:break-inside-avoid">
-                  <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-sm print:border print:border-slate-800 print:text-black ${isMaterial ? 'bg-red-500 print:bg-slate-200' : 'bg-slate-400 print:bg-white'}`}>
+                  {/* 🛠️ PERBAIKAN: Menghapus override warna putih/hitam di print legend */}
+                  <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-sm ${isMaterial ? 'bg-red-500' : 'bg-slate-400'}`}>
                     {index + 1}
                   </div>
                   <div className="flex-1 text-slate-700 font-medium truncate print:whitespace-normal">
                     <span className={`font-mono font-bold mr-2 ${topic.disclosure_code.startsWith('IFRS') ? 'text-blue-600' : 'text-slate-900'}`}>{topic.disclosure_code}</span> 
                     {topic.title_id || topic.title_en}
                   </div>
-                  <div className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded ${isMaterial ? 'bg-red-100 text-red-700 print:border print:border-black' : 'text-slate-500'}`}>
+                  <div className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded ${isMaterial ? 'bg-red-100 text-red-700' : 'text-slate-500'}`}>
                     ({impactScore.toFixed(1)}, {financialScore.toFixed(1)})
                   </div>
                 </div>
@@ -210,7 +219,6 @@ export function MaterialityMatrix({ disclosures, selectedTopicIds, setMaterialTo
         </div>
       </div>
 
-      {/* PENYESUAIAN SKOR MANUAL & INPUT ALASAN */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 print:hidden">
         <h2 className="text-lg font-bold text-slate-800 mb-6">Penyesuaian Skor Manual & Alasan Penilaian</h2>
         <div className="space-y-4">
@@ -234,7 +242,6 @@ export function MaterialityMatrix({ disclosures, selectedTopicIds, setMaterialTo
                   </div>
                   
                   <div className="flex-1 w-full flex flex-col md:flex-row gap-6">
-                    {/* SLIDER X */}
                     <div className="flex-1">
                       <div className="flex justify-between items-end mb-2">
                         <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Dampak bagi Bisnis (X)</label>
@@ -243,7 +250,6 @@ export function MaterialityMatrix({ disclosures, selectedTopicIds, setMaterialTo
                       <input type="range" min="1" max="10" step="0.1" value={impactScore} onChange={(e) => handleScoreChange(topic.id, 'impact', parseFloat(e.target.value))} className="w-full accent-emerald-600 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer" />
                     </div>
 
-                    {/* SLIDER Y */}
                     <div className="flex-1">
                       <div className="flex justify-between items-end mb-2">
                         <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Penting bagi Stakeholders (Y)</label>
@@ -254,7 +260,6 @@ export function MaterialityMatrix({ disclosures, selectedTopicIds, setMaterialTo
                   </div>
                 </div>
 
-                {/* KOTAK INPUT ALASAN / JUSTIFIKASI */}
                 <div className="border-t border-slate-200/80 pt-3">
                   <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
                     Alasan / Justifikasi Penilaian Skor
@@ -274,7 +279,6 @@ export function MaterialityMatrix({ disclosures, selectedTopicIds, setMaterialTo
         </div>
       </div>
 
-      {/* KESIMPULAN FASE 2 */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex justify-between items-center sticky bottom-4 z-20 print:hidden">
         <div><h3 className="font-bold text-slate-800 text-sm">Kesimpulan Fase 2</h3><p className="text-xs text-slate-500">Terdapat <strong className="text-red-600 text-sm">{materialTopics.length} Topik Material</strong>.</p></div>
         <button onClick={handleApprove} className="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold py-3 px-8 rounded-xl transition shadow-lg flex items-center gap-2">Sahkan & Lanjut <span className="text-lg">→</span></button>

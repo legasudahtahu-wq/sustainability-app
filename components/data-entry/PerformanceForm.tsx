@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { GriDisclosure } from '@/types/database';
 
 interface PerformanceFormProps {
@@ -19,8 +19,10 @@ const INTENSITY_UNITS = ['Ton Produk', 'Juta Rupiah (Pendapatan)', 'MWh (Output)
 
 export function PerformanceForm({ disclosures, materialTopicIds, managementData, setManagementData, perfData, setPerfData, sites, setSites, reportingYear }: PerformanceFormProps) {
   
-  // DILENGKAPI: Menggabungkan Topik Wajib (GRI 2) + Topik Hasil Sahkan Fase 2 (materialTopicIds)
-  const activeDisclosures = disclosures.filter((d) => d.gri_type === 'universal' || materialTopicIds.includes(d.id));
+  // 🛠️ PERBAIKAN 1: Gunakan useMemo agar daftar topik langsung update (reaktif) ketika data materialTopicIds dari Fase 2 berubah
+  const activeDisclosures = useMemo(() => {
+    return disclosures.filter((d) => d.gri_type === 'universal' || materialTopicIds.includes(d.id));
+  }, [disclosures, materialTopicIds]);
   
   // JENDELA 4 TAHUN DINAMIS
   const years = [reportingYear - 3, reportingYear - 2, reportingYear - 1, reportingYear];
@@ -90,33 +92,31 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
   const handleAddSite = () => { if (!newSiteName.trim() || sites.includes(newSiteName.trim())) return; setSites(prev => [...prev, newSiteName.trim()]); setNewSiteName(''); setShowAddSiteModal(false); };
   const handleRemoveSite = (site: string) => { if (sites.length > 1) setSites(prev => prev.filter(s => s !== site)); };
 
-  const filteredDisclosures = activeDisclosures.filter(d => {
-    const matchesCategory = categoryFilter === 'ALL' ? true : categoryFilter === 'UNIVERSAL' ? d.gri_type === 'universal' : categoryFilter === 'TOPIC' ? d.gri_type === 'topic' : true;
-    const matchesSearch = d.disclosure_code.toLowerCase().includes(searchQuery.toLowerCase()) || (d.title_id || d.title_en || '').toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesSearch;
-  });
+  // 🛠️ PERBAIKAN 2: Gunakan useMemo agar filter juga reaktif ketika activeDisclosures berubah
+  const filteredDisclosures = useMemo(() => {
+    return activeDisclosures.filter(d => {
+      const matchesCategory = categoryFilter === 'ALL' ? true : categoryFilter === 'UNIVERSAL' ? d.gri_type === 'universal' : categoryFilter === 'TOPIC' ? d.gri_type === 'topic' : true;
+      const matchesSearch = d.disclosure_code.toLowerCase().includes(searchQuery.toLowerCase()) || (d.title_id || d.title_en || '').toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesCategory && matchesSearch;
+    });
+  }, [activeDisclosures, categoryFilter, searchQuery]);
 
-  // PERBAIKAN BUG SINKRONISASI: Otomatis ganti activeTopicId jika topik aktif tidak ada di daftar hasil filter
+  // 🛠️ PERBAIKAN 3: Menyempurnakan logika sinkronisasi menu aktif agar tidak bug saat berganti fase
   useEffect(() => {
     if (filteredDisclosures.length > 0) {
       const isCurrentInFiltered = filteredDisclosures.some(d => d.id === activeTopicId);
       if (!isCurrentInFiltered) {
         setActiveTopicId(filteredDisclosures[0].id);
       }
+    } else {
+      setActiveTopicId('');
     }
-  }, [categoryFilter, searchQuery, filteredDisclosures, activeTopicId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredDisclosures]);
 
   // Handler saat Tab diklik agar langsung mengaktifkan item pertama
   const handleTabChange = (catId: 'ALL' | 'UNIVERSAL' | 'TOPIC') => {
     setCategoryFilter(catId);
-    const newFiltered = activeDisclosures.filter(d => {
-      const matchesCat = catId === 'ALL' ? true : catId === 'UNIVERSAL' ? d.gri_type === 'universal' : catId === 'TOPIC' ? d.gri_type === 'topic' : true;
-      const matchesSearch = d.disclosure_code.toLowerCase().includes(searchQuery.toLowerCase()) || (d.title_id || d.title_en || '').toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesCat && matchesSearch;
-    });
-    if (newFiltered.length > 0) {
-      setActiveTopicId(newFiltered[0].id);
-    }
   };
 
   const handleManagementChange = (field: 'policy' | 'actions', value: string) => { setIsSaved(false); setManagementData(prev => ({ ...prev, [activeTopicId]: { ...(prev[activeTopicId] || { policy: '', actions: '' }), [field]: value } })); };
@@ -317,10 +317,11 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-xl border border-slate-200 flex overflow-hidden min-h-[850px] relative print:border-none print:shadow-none print:h-auto">
+    // 🛠️ PERBAIKAN 4: Mengubah min-h-[850px] menjadi batasan tinggi dinamis h-[calc(100vh-140px)] agar scrollbar dalam kolom muncul dan halaman tidak melar
+    <div className="bg-white rounded-2xl shadow-xl border border-slate-200 flex overflow-hidden h-[calc(100vh-160px)] min-h-[600px] relative print:border-none print:shadow-none print:h-auto">
       
       {showAddSiteModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-4 z-[999] print:hidden">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-4 print:hidden">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
             <h3 className="text-base font-bold text-slate-800 mb-2">Tambah Lokasi Site Baru</h3>
             <input type="text" value={newSiteName} onChange={(e) => setNewSiteName(e.target.value)} placeholder="Contoh: Kantor Cabang Bali" className="w-full p-3 text-xs border border-slate-300 rounded-xl mb-5 outline-none focus:border-emerald-500" />
@@ -333,7 +334,7 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
       )}
 
       {showAddItemModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-4 z-[999] print:hidden">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-4 print:hidden">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
             <h3 className="text-base font-bold text-slate-800 mb-1">Tambah Kategori {newItemCategory}</h3>
             <p className="text-[10px] text-slate-500 mb-4">Tambahkan rincian baru.</p>
@@ -367,6 +368,7 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
             ))}
           </div>
         </div>
+        {/* Kolom Daftar Topik ini sekarang akan otomatis memunculkan scrollbar! */}
         <div className="overflow-y-auto flex-1 p-2 space-y-1.5">
           {filteredDisclosures.map((d) => {
             const isTcfd = d.disclosure_code.startsWith('IFRS');
@@ -410,6 +412,7 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
           <p className="text-xs text-slate-300 leading-relaxed font-medium bg-slate-800/50 p-3 rounded-lg border border-slate-700 mt-2 print:bg-transparent print:border-none print:text-slate-700 print:p-0">{details.description}</p>
         </div>
 
+        {/* Kolom Form Isian ini juga akan otomatis memunculkan scrollbar! */}
         <div className="p-6 overflow-y-auto flex-1 space-y-6 print:p-0 print:mt-6 print:overflow-visible">
 
           <div className={`bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden print:shadow-none ${currentTopic?.disclosure_code.startsWith('IFRS') ? 'hidden' : 'block'}`}>

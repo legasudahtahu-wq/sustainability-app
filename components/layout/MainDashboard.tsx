@@ -25,7 +25,7 @@ export function MainDashboard({ disclosures }: MainDashboardProps) {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userRole, setUserRole] = useState<'inputter' | 'reviewer'>('inputter');
   const [orgId, setOrgId] = useState<string | null>(null);
-  const [orgCode, setOrgCode] = useState<string>(''); // KODE UNIK
+  const [orgCode, setOrgCode] = useState<string>(''); 
   const [isApproved, setIsApproved] = useState<boolean>(false);
 
   const [activeTab, setActiveTab] = useState<'profil' | 'taksonomi' | 'matriks' | 'entri' | 'review'>('profil');
@@ -40,6 +40,7 @@ export function MainDashboard({ disclosures }: MainDashboardProps) {
   const [perfData, setPerfData] = useState<Record<string, Record<number, any>>>({});
   
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isSavingManual, setIsSavingManual] = useState(false); // 🛠️ PERBAIKAN: UX Loading button
 
   const allDisclosures = useMemo(() => {
     const existingIds = new Set(disclosures.map(d => d.id));
@@ -73,7 +74,6 @@ export function MainDashboard({ disclosures }: MainDashboardProps) {
           if (profile.organization_id) {
             setOrgId(profile.organization_id);
 
-            // Ambil Kode Organisasi
             const { data: orgData } = await supabase
               .from('organizations')
               .select('code, name')
@@ -82,10 +82,10 @@ export function MainDashboard({ disclosures }: MainDashboardProps) {
 
             if (orgData) {
               if (orgData.code) setOrgCode(orgData.code);
-              if (orgData.name) setCompanyName(orgData.name);
+              // 🛠️ PERBAIKAN: Hanya pakai nama dari organizations jika di profile masih kosong
+              if (orgData.name && !profile.company_name) setCompanyName(orgData.name);
             }
 
-            // Ambil Laporan
             const { data: report } = await supabase
               .from('esg_reports')
               .select('*')
@@ -134,6 +134,12 @@ export function MainDashboard({ disclosures }: MainDashboardProps) {
           })
           .eq('id', currentUser.id);
 
+        // 🛠️ PERBAIKAN: Sinkronkan juga perubahan nama ke tabel organizations saat autosave
+        await supabase
+          .from('organizations')
+          .update({ name: companyName })
+          .eq('id', orgId);
+
         await supabase
           .from('esg_reports')
           .update({
@@ -146,7 +152,7 @@ export function MainDashboard({ disclosures }: MainDashboardProps) {
           .eq('organization_id', orgId);
       };
 
-      const timer = setTimeout(() => saveData(), 1000);
+      const timer = setTimeout(() => saveData(), 1500); // 🛠️ PERBAIKAN: Diperpanjang jadi 1.5 detik agar tidak memberatkan DB
       return () => clearTimeout(timer);
     }
   }, [perfData, managementData, materialTopicIds, selectedTopicIds, sites, companyName, reportingYear, selectedSector, isLoaded, currentUser, orgId, userRole, isApproved]);
@@ -162,33 +168,57 @@ export function MainDashboard({ disclosures }: MainDashboardProps) {
     if (sites.length > 1) setSites(prev => prev.filter(s => s !== site));
   };
 
-  const handleProfileSubmit = (e: React.FormEvent) => {
+  // 🛠️ PERBAIKAN: Mengubah jadi async dan melakukan push eksplisit ke Supabase
+  const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (userRole === 'reviewer') {
       setActiveTab('review');
       return;
     }
 
-    let preselected: string[] = [...selectedTopicIds];
+    setIsSavingManual(true);
 
-    if (selectedSector === 'GRI 11: Oil and Gas (Migas)') {
-      const migasCodes = ['305', '302', '303', '304', '306', '403']; 
-      const migasIds = allDisclosures.filter(d => migasCodes.some(code => d.disclosure_code.startsWith(code))).map(d => d.id);
-      preselected = Array.from(new Set([...preselected, ...migasIds, 'tcfd-1', 'tcfd-2']));
-    } 
-    else if (selectedSector === 'GRI 12: Coal (Batu Bara)') {
-      const coalCodes = ['305', '302', '303', '304', '306', '403', '413', '201'];
-      const coalIds = allDisclosures.filter(d => coalCodes.some(code => d.disclosure_code.startsWith(code))).map(d => d.id);
-      preselected = Array.from(new Set([...preselected, ...coalIds, 'tcfd-1', 'tcfd-2']));
-    }
-    else if (selectedSector === 'GRI 13: Agriculture, Aquaculture and Fishing') {
-      const agriCodes = ['304', '303', '301', '414', '403'];
-      const agriIds = allDisclosures.filter(d => agriCodes.some(code => d.disclosure_code.startsWith(code))).map(d => d.id);
-      preselected = Array.from(new Set([...preselected, ...agriIds, 'tcfd-1'])); 
-    }
+    try {
+      if (currentUser && orgId) {
+        await supabase.from('profiles').update({
+          company_name: companyName,
+          reporting_year: parseInt(reportingYear, 10) || 2025,
+          sector: selectedSector,
+          sites: sites,
+          updated_at: new Date()
+        }).eq('id', currentUser.id);
 
-    setSelectedTopicIds(preselected);
-    setActiveTab('taksonomi');
+        await supabase.from('organizations').update({
+          name: companyName
+        }).eq('id', orgId);
+      }
+
+      let preselected: string[] = [...selectedTopicIds];
+
+      if (selectedSector === 'GRI 11: Oil and Gas (Migas)') {
+        const migasCodes = ['305', '302', '303', '304', '306', '403']; 
+        const migasIds = allDisclosures.filter(d => migasCodes.some(code => d.disclosure_code.startsWith(code))).map(d => d.id);
+        preselected = Array.from(new Set([...preselected, ...migasIds, 'tcfd-1', 'tcfd-2']));
+      } 
+      else if (selectedSector === 'GRI 12: Coal (Batu Bara)') {
+        const coalCodes = ['305', '302', '303', '304', '306', '403', '413', '201'];
+        const coalIds = allDisclosures.filter(d => coalCodes.some(code => d.disclosure_code.startsWith(code))).map(d => d.id);
+        preselected = Array.from(new Set([...preselected, ...coalIds, 'tcfd-1', 'tcfd-2']));
+      }
+      else if (selectedSector === 'GRI 13: Agriculture, Aquaculture and Fishing') {
+        const agriCodes = ['304', '303', '301', '414', '403'];
+        const agriIds = allDisclosures.filter(d => agriCodes.some(code => d.disclosure_code.startsWith(code))).map(d => d.id);
+        preselected = Array.from(new Set([...preselected, ...agriIds, 'tcfd-1'])); 
+      }
+
+      setSelectedTopicIds(preselected);
+      setActiveTab('taksonomi');
+    } catch (error) {
+      console.error("Gagal menyimpan data:", error);
+      alert("Terjadi kesalahan saat menyimpan data.");
+    } finally {
+      setIsSavingManual(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -269,7 +299,6 @@ export function MainDashboard({ disclosures }: MainDashboardProps) {
           <button onClick={() => setActiveTab('review')} className={`w-full text-left px-4 py-3 rounded-xl text-xs font-semibold transition-all ${activeTab === 'review' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-800'}`}>4. Review & Validasi</button>
         </nav>
 
-        {/* TAMPILAN KODE PERUSAHAAN UNTUK BAGI DENGAN REKAN TIM */}
         {orgCode && (
           <div className="mx-4 mb-3 p-3 bg-slate-800 rounded-xl border border-slate-700">
             <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Kode Tim Perusahaan:</span>
@@ -370,8 +399,9 @@ export function MainDashboard({ disclosures }: MainDashboardProps) {
                   </div>
 
                   <div className="pt-6 flex justify-end">
-                    <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold py-3 px-8 rounded-xl transition shadow flex items-center gap-2 print:hidden">
-                      Simpan & Lanjut ke Taksonomi <span className="text-lg">→</span>
+                    {/* 🛠️ PERBAIKAN: Tombol menampilkan state loading (Menyimpan...) */}
+                    <button type="submit" disabled={isSavingManual} className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white text-sm font-bold py-3 px-8 rounded-xl transition shadow flex items-center gap-2 print:hidden">
+                      {isSavingManual ? 'Menyimpan...' : 'Simpan & Lanjut ke Taksonomi'} {!isSavingManual && <span className="text-lg">→</span>}
                     </button>
                   </div>
                 </form>
