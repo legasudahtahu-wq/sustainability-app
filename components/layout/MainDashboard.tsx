@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { GriDisclosure } from '@/types/database';
 import { supabase } from '@/lib/supabase/client';
 import { AuthScreen } from '@/components/auth/AuthScreen';
@@ -39,8 +39,14 @@ export function MainDashboard({ disclosures }: MainDashboardProps) {
   const [managementData, setManagementData] = useState<Record<string, { policy: string, actions: string }>>({});
   const [perfData, setPerfData] = useState<Record<string, Record<number, any>>>({});
   
+  // State baru untuk menyimpan skor matriks di Cloud
+  const [matrixScores, setMatrixScores] = useState<Record<string, { impact: number, financial: number, justification?: string }>>({});
+
   const [isLoaded, setIsLoaded] = useState(false);
-  const [isSavingManual, setIsSavingManual] = useState(false); // 🛠️ PERBAIKAN: UX Loading button
+  const [isSavingManual, setIsSavingManual] = useState(false);
+
+  // Ref untuk Dirty Check (Pendeteksi Perubahan)
+  const lastSavedData = useRef<string>('');
 
   const allDisclosures = useMemo(() => {
     const existingIds = new Set(disclosures.map(d => d.id));
@@ -82,7 +88,6 @@ export function MainDashboard({ disclosures }: MainDashboardProps) {
 
             if (orgData) {
               if (orgData.code) setOrgCode(orgData.code);
-              // 🛠️ PERBAIKAN: Hanya pakai nama dari organizations jika di profile masih kosong
               if (orgData.name && !profile.company_name) setCompanyName(orgData.name);
             }
 
@@ -97,6 +102,7 @@ export function MainDashboard({ disclosures }: MainDashboardProps) {
               if (report.material_topic_ids) setMaterialTopicIds(report.material_topic_ids);
               if (report.management_data) setManagementData(report.management_data);
               if (report.perf_data) setPerfData(report.perf_data);
+              if (report.matrix_scores) setMatrixScores(report.matrix_scores); // Tarik dari Cloud
             }
           }
         }
@@ -122,6 +128,16 @@ export function MainDashboard({ disclosures }: MainDashboardProps) {
 
   useEffect(() => {
     if (isLoaded && currentUser && orgId && userRole === 'inputter' && isApproved) {
+      
+      const currentDataString = JSON.stringify({ 
+        perfData, managementData, materialTopicIds, selectedTopicIds, matrixScores, sites, companyName, reportingYear, selectedSector 
+      });
+
+      // Dirty check: Batalkan simpan jika data masih sama persis
+      if (lastSavedData.current === currentDataString) {
+        return; 
+      }
+
       const saveData = async () => {
         await supabase
           .from('profiles')
@@ -134,7 +150,6 @@ export function MainDashboard({ disclosures }: MainDashboardProps) {
           })
           .eq('id', currentUser.id);
 
-        // 🛠️ PERBAIKAN: Sinkronkan juga perubahan nama ke tabel organizations saat autosave
         await supabase
           .from('organizations')
           .update({ name: companyName })
@@ -147,15 +162,18 @@ export function MainDashboard({ disclosures }: MainDashboardProps) {
             material_topic_ids: materialTopicIds,
             management_data: managementData,
             perf_data: perfData,
+            matrix_scores: matrixScores, // Dorong ke Cloud
             updated_at: new Date()
           })
           .eq('organization_id', orgId);
+          
+        lastSavedData.current = currentDataString;
       };
 
-      const timer = setTimeout(() => saveData(), 1500); // 🛠️ PERBAIKAN: Diperpanjang jadi 1.5 detik agar tidak memberatkan DB
+      const timer = setTimeout(() => saveData(), 1500); 
       return () => clearTimeout(timer);
     }
-  }, [perfData, managementData, materialTopicIds, selectedTopicIds, sites, companyName, reportingYear, selectedSector, isLoaded, currentUser, orgId, userRole, isApproved]);
+  }, [perfData, managementData, materialTopicIds, selectedTopicIds, matrixScores, sites, companyName, reportingYear, selectedSector, isLoaded, currentUser, orgId, userRole, isApproved]);
 
   const handleAddSite = () => {
     if (userRole === 'reviewer') return;
@@ -168,7 +186,6 @@ export function MainDashboard({ disclosures }: MainDashboardProps) {
     if (sites.length > 1) setSites(prev => prev.filter(s => s !== site));
   };
 
-  // 🛠️ PERBAIKAN: Mengubah jadi async dan melakukan push eksplisit ke Supabase
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (userRole === 'reviewer') {
@@ -399,7 +416,6 @@ export function MainDashboard({ disclosures }: MainDashboardProps) {
                   </div>
 
                   <div className="pt-6 flex justify-end">
-                    {/* 🛠️ PERBAIKAN: Tombol menampilkan state loading (Menyimpan...) */}
                     <button type="submit" disabled={isSavingManual} className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white text-sm font-bold py-3 px-8 rounded-xl transition shadow flex items-center gap-2 print:hidden">
                       {isSavingManual ? 'Menyimpan...' : 'Simpan & Lanjut ke Taksonomi'} {!isSavingManual && <span className="text-lg">→</span>}
                     </button>
@@ -409,7 +425,18 @@ export function MainDashboard({ disclosures }: MainDashboardProps) {
             )}
 
             {activeTab === 'taksonomi' && <MaterialitySelector disclosures={allDisclosures} selectedTopicIds={selectedTopicIds} setSelectedTopicIds={setSelectedTopicIds} onNext={() => setActiveTab('matriks')} />}
-            {activeTab === 'matriks' && <MaterialityMatrix disclosures={allDisclosures} selectedTopicIds={selectedTopicIds} setMaterialTopicIds={setMaterialTopicIds} onNext={() => setActiveTab('entri')} />}
+            
+            {activeTab === 'matriks' && (
+              <MaterialityMatrix 
+                disclosures={allDisclosures} 
+                selectedTopicIds={selectedTopicIds} 
+                setMaterialTopicIds={setMaterialTopicIds} 
+                matrixScores={matrixScores} 
+                setMatrixScores={setMatrixScores} 
+                onNext={() => setActiveTab('entri')} 
+              />
+            )}
+            
             {activeTab === 'entri' && <PerformanceForm disclosures={allDisclosures} materialTopicIds={materialTopicIds} managementData={managementData} setManagementData={setManagementData} perfData={perfData} setPerfData={setPerfData} sites={sites} setSites={setSites} reportingYear={activeYearNum} />}
             {activeTab === 'review' && <ReviewDashboard disclosures={allDisclosures} perfData={perfData} managementData={managementData} materialTopicIds={materialTopicIds} sites={sites} reportingYear={activeYearNum} />}
           </div>

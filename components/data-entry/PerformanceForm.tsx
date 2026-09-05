@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { GriDisclosure } from '@/types/database';
 
 interface PerformanceFormProps {
@@ -17,26 +17,167 @@ interface PerformanceFormProps {
 
 const INTENSITY_UNITS = ['Ton Produk', 'Juta Rupiah (Pendapatan)', 'MWh (Output)', 'Orang (FTE)', 'Meter Persegi', 'Lainnya'];
 
+const SafeNumericInput = React.memo(({ value, onChange, placeholder = "0", className }: any) => {
+  const [localVal, setLocalVal] = useState<string | number>(value ?? '');
+  const [error, setError] = useState('');
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
+  useEffect(() => { setLocalVal(value ?? ''); }, [value]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (localVal === '' || localVal === null) {
+        setError('');
+        onChangeRef.current(null);
+      } else {
+        const parsed = parseFloat(localVal as string);
+        if (isNaN(parsed)) {
+          setError('Harus angka!');
+        } else if (parsed < 0) {
+          setError('Tidak boleh minus!');
+        } else {
+          setError('');
+          onChangeRef.current(parsed);
+        }
+      }
+    }, 600); 
+    return () => clearTimeout(timer);
+  }, [localVal]);
+
+  return (
+    <div className="relative w-full">
+      <input
+        type="number"
+        step="any"
+        placeholder={placeholder}
+        value={localVal}
+        onChange={(e) => setLocalVal(e.target.value)}
+        className={`${className} ${error ? 'border-red-500 bg-red-50 text-red-900 focus:ring-red-500' : ''}`}
+      />
+      {error && <span className="absolute -bottom-4 left-0 text-[9px] text-red-600 font-bold bg-white px-1 rounded shadow-sm z-10">{error}</span>}
+    </div>
+  );
+});
+SafeNumericInput.displayName = "SafeNumericInput";
+
+const SafeTextArea = React.memo(({ value, onChange, placeholder, className, rows = 3 }: any) => {
+  const [localVal, setLocalVal] = useState(value ?? '');
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
+  useEffect(() => { setLocalVal(value ?? ''); }, [value]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      onChangeRef.current((localVal as string).trim());
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [localVal]);
+
+  return (
+    <textarea rows={rows} placeholder={placeholder} value={localVal} onChange={(e) => setLocalVal(e.target.value)} className={className} />
+  );
+});
+SafeTextArea.displayName = "SafeTextArea";
+
+const SafeTextInput = React.memo(({ value, onChange, placeholder, className }: any) => {
+  const [localVal, setLocalVal] = useState(value ?? '');
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
+  useEffect(() => { setLocalVal(value ?? ''); }, [value]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      onChangeRef.current((localVal as string).trim());
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [localVal]);
+
+  return (
+    <input type="text" placeholder={placeholder} value={localVal} onChange={(e) => setLocalVal(e.target.value)} className={className} />
+  );
+});
+SafeTextInput.displayName = "SafeTextInput";
+
+const sanitizeCSV = (str: any) => {
+  if (str === null || str === undefined || str === '') return '"-"';
+  const cleanStr = String(str).replace(/"/g, '""');
+  if (/^[=\-+\@]/.test(cleanStr)) return `"\t${cleanStr}"`; 
+  return `"${cleanStr}"`;
+};
+
+const getCrossReference = (code: string = '') => {
+  if (code.startsWith('201')) return ['SDG 8', 'SDG 9', 'POJK 51: 6.a'];
+  if (code.startsWith('205')) return ['SDG 16', 'UNGC 10'];
+  if (code.startsWith('302')) return ['SDG 7', 'SDG 12', 'SDG 13', 'POJK 51: 6.b'];
+  if (code.startsWith('303')) return ['SDG 6', 'POJK 51: 6.b'];
+  if (code.startsWith('304')) return ['SDG 14', 'SDG 15', 'POJK 51: 6.b'];
+  if (code.startsWith('305')) return ['SDG 13', 'TCFD Metrics', 'POJK 51: 6.b'];
+  if (code.startsWith('306')) return ['SDG 3', 'SDG 6', 'SDG 12', 'POJK 51: 6.b'];
+  if (code.startsWith('401')) return ['SDG 8', 'POJK 51: 6.c'];
+  if (code.startsWith('403')) return ['SDG 3', 'SDG 8', 'POJK 51: 6.c'];
+  if (code.startsWith('404')) return ['SDG 4', 'SDG 8', 'POJK 51: 6.c'];
+  if (code.startsWith('405')) return ['SDG 5', 'SDG 10', 'POJK 51: 6.c'];
+  if (code.startsWith('413')) return ['SDG 1', 'SDG 2', 'SDG 11', 'POJK 51: 6.d'];
+  if (code.startsWith('2-')) return ['UNGC 1-10', 'POJK 51: 4', 'SDG 16'];
+  if (code.startsWith('IFRS')) return ['TCFD Framework', 'SASB General', 'SDG 13'];
+  return ['GRI Standards'];
+};
+
+const getBestPracticePlaceholder = (code: string = '') => {
+  if (code.startsWith('2-')) return "Contoh: Mengimplementasikan sistem rekrutmen dewan pengawas berbasis matriks kompetensi ESG dan keberagaman gender...";
+  if (code.startsWith('20')) return "Contoh: Membentuk kemitraan dengan 100 UMKM lokal untuk memperkuat rantai pasok domestik...";
+  if (code.startsWith('302') || code.startsWith('305') || code.startsWith('IFRS')) return "Contoh: Meluncurkan program efisiensi energi dan pemasangan panel surya yang berhasil memangkas emisi karbon 15%...";
+  if (code.startsWith('303') || code.startsWith('306')) return "Contoh: Penerapan teknologi sirkular ekonomi yang berhasil mendaur ulang 85% limbah operasional menjadi bahan baku alternatif...";
+  if (code.startsWith('403')) return "Contoh: Kampanye 'Safety First' yang berhasil mencapai 2 juta jam kerja tanpa kecelakaan kehilangan waktu (Zero LTI)...";
+  if (code.startsWith('413')) return "Contoh: Inisiatif 'Desa Mandiri' yang memberdayakan 50 kepala keluarga lokal melalui pelatihan kewirausahaan...";
+  return "Ceritakan kisah sukses, inovasi, atau inisiatif unggulan yang telah dijalankan perusahaan terkait topik ini...";
+};
+
+const getPolicyPlaceholder = (code: string = '') => {
+  if (code.startsWith('2-')) return "Contoh: Pedoman Tata Kelola Perusahaan (GCG), Kode Etik Perilaku...";
+  if (code.startsWith('20')) return "Contoh: Kebijakan Pengadaan Barang & Jasa (SOP-LOG-01), Pedoman Anti Penyuapan...";
+  if (code.startsWith('302') || code.startsWith('305') || code.startsWith('IFRS')) return "Contoh: Kebijakan Transisi Energi, Komitmen Net Zero Emission...";
+  if (code.startsWith('303') || code.startsWith('306')) return "Contoh: SOP Pengelolaan Limbah B3, Kebijakan Konservasi Air (SK Dir No. 12/2023)...";
+  if (code.startsWith('403')) return "Contoh: Kebijakan Sistem Manajemen Keselamatan dan Kesehatan Kerja (SMK3) Terintegrasi...";
+  if (code.startsWith('4')) return "Contoh: Perjanjian Kerja Bersama (PKB), Kebijakan Kesetaraan Kesempatan Kerja...";
+  return "Tuliskan nama kebijakan, SOP, atau pedoman internal yang mengatur pengelolaan topik ini...";
+};
+
+const getTargetPlaceholder = (code: string = '') => {
+  if (code.startsWith('20')) return "Contoh: Melibatkan minimal 70% pemasok lokal pada tahun 2026...";
+  if (code.startsWith('302') || code.startsWith('305')) return "Contoh: Penurunan intensitas emisi 10% dan efisiensi energi 5% di 2030...";
+  if (code.startsWith('306')) return "Contoh: Zero Waste to Landfill pada tahun 2028...";
+  if (code.startsWith('403')) return "Contoh: Zero Fatality, Pengurangan LTIR sebesar 5% tahun ini...";
+  if (code.startsWith('405')) return "Contoh: Mencapai kuota 30% perempuan dalam posisi manajerial...";
+  return "Contoh: Mencapai kepatuhan 100%, peningkatan efisiensi 5%...";
+};
+
+const getNarrativePlaceholder = (code: string = '') => {
+  if (code.match(/^2-[1-6]/)) return "Contoh: PT ESG Nusantara beroperasi di sektor manufaktur dengan kantor pusat di Jakarta. Kami melayani pasar domestik dan ekspor ke 5 negara...";
+  if (code.match(/^2-[9|10|11|12|13|14|15|16|17|18|19|20]/)) return "Contoh: Susunan dewan direksi terdiri dari 5 anggota. Pemilihan dilakukan melalui RUPS dengan mempertimbangkan independensi dan rekam jejak...";
+  if (code === '2-30') return "Contoh: Saat ini, 85% karyawan kami tercakup dalam Perjanjian Perundingan Kolektif (PKB) yang diperbarui setiap 2 tahun...";
+  return "Uraikan penjelasan kualitatif, konteks data, prosedur, atau rincian tambahan yang relevan dengan indikator ini...";
+};
+
 export function PerformanceForm({ disclosures, materialTopicIds, managementData, setManagementData, perfData, setPerfData, sites, setSites, reportingYear }: PerformanceFormProps) {
   
-  // 🛠️ PERBAIKAN 1: Gunakan useMemo agar daftar topik langsung update (reaktif) ketika data materialTopicIds dari Fase 2 berubah
   const activeDisclosures = useMemo(() => {
     return disclosures.filter((d) => d.gri_type === 'universal' || materialTopicIds.includes(d.id));
   }, [disclosures, materialTopicIds]);
   
-  // JENDELA 4 TAHUN DINAMIS
   const years = [reportingYear - 3, reportingYear - 2, reportingYear - 1, reportingYear];
   
   const [selectedYear, setSelectedYear] = useState<number>(reportingYear);
   const [activeTopicId, setActiveTopicId] = useState<string>(activeDisclosures[0]?.id || '');
   const [isSaved, setIsSaved] = useState(false);
+  
+  const [isUploading, setIsUploading] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<'ALL' | 'UNIVERSAL' | 'TOPIC'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-
-  useEffect(() => {
-    setSelectedYear(reportingYear);
-  }, [reportingYear]);
 
   const [showAddSiteModal, setShowAddSiteModal] = useState(false);
   const [newSiteName, setNewSiteName] = useState('');
@@ -44,55 +185,62 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
   const [newItemName, setNewItemName] = useState('');
   const [newItemCategory, setNewItemCategory] = useState('');
 
-  const getGriDetails = (code: string) => {
-    if (code === 'IFRS-S2-1') return { description: 'Pengungkapan hasil Uji Stres Risiko Iklim (CRST) tingkat korporat mencakup skenario yang digunakan, proyeksi peningkatan Probability of Default (PD), Loss Given Default (LGD), dan dampaknya terhadap Capital Adequacy Ratio (CAR).', unit: 'Persentase (%)', isNumeric: false, type: 'tcfd_strategy', policy: 'Strategi Manajemen Risiko Iklim (CRST)...', actions: 'Melakukan Uji Stres...', target: 'Ketahanan Modal (CAR) Terjaga', evidence: '' };
-    if (code === 'IFRS-S2-2') return { description: 'Pengungkapan target penurunan emisi yang dibiayai (Financed Emissions) serta penerapan Internal Carbon Pricing (ICP) dalam operasional dan pengambilan keputusan investasi.', unit: 'Nilai', isNumeric: false, type: 'tcfd_metrics', policy: 'Kebijakan Dekarbonisasi Portofolio...', actions: 'Mengukur Financed Emissions...', target: 'Net Zero Emission 2050', evidence: '' };
+  // 🌟 FITUR BARU: STATE AUDIT TRAIL
+  const [showAuditModal, setShowAuditModal] = useState(false);
+  const [mockAuditLogs, setMockAuditLogs] = useState<Record<string, any[]>>({});
 
-    if (code === '302-3') return { description: 'Rasio energi yang digunakan untuk setiap unit aktivitas/produksi.', unit: 'GJ / Unit', isNumeric: true, type: 'intensity', policy: 'Kebijakan Intensitas Energi...', actions: 'Pemantauan efisiensi...', target: 'Turun 5%', evidence: '' };
-    if (code === '305-4') return { description: 'Rasio emisi Gas Rumah Kaca terhadap metrik spesifik organisasi.', unit: 'tCO2e / Unit', isNumeric: true, type: 'intensity', policy: 'Kebijakan Intensitas Emisi...', actions: 'Pemantauan dekarbonisasi...', target: 'Turun 10%', evidence: '' };
-    if (code === '2-7') return { description: 'Total jumlah karyawan yang bekerja untuk organisasi.', unit: 'Orang', isNumeric: true, type: 'breakdown', aggType: 'sum', categories: ['Berdasarkan Status Kontrak', 'Berdasarkan Tipe Pekerjaan'], defaultItems: [{ id: 'emp_p', name: 'Karyawan Tetap', category: 'Berdasarkan Status Kontrak' }, { id: 'emp_t', name: 'Karyawan Kontrak', category: 'Berdasarkan Status Kontrak' }, { id: 'emp_ft', name: 'Penuh Waktu', category: 'Berdasarkan Tipe Pekerjaan' }, { id: 'emp_pt', name: 'Paruh Waktu', category: 'Berdasarkan Tipe Pekerjaan' }], policy: 'Kebijakan Ketenagakerjaan...', actions: 'Perekrutan...', target: '100%', evidence: '' };
-    if (code === '405-1') return { description: 'Komposisi karyawan dan badan tata kelola perusahaan.', unit: 'Orang', isNumeric: true, type: 'breakdown', aggType: 'sum', categories: ['Berdasarkan Gender', 'Berdasarkan Kelompok Usia'], defaultItems: [{ id: 'div_g_1', name: 'Laki-laki', category: 'Berdasarkan Gender' }, { id: 'div_g_2', name: 'Perempuan', category: 'Berdasarkan Gender' }, { id: 'div_a_1', name: 'Di bawah 30 tahun', category: 'Berdasarkan Kelompok Usia' }, { id: 'div_a_2', name: '30 - 50 tahun', category: 'Berdasarkan Kelompok Usia' }, { id: 'div_a_3', name: 'Di atas 50 tahun', category: 'Berdasarkan Kelompok Usia' }], policy: 'Keanekaragaman...', actions: 'Rekrutmen inklusif...', target: 'Kesetaraan Gender', evidence: '' };
-    if (code === '204-1') return { description: 'Persentase pengadaan untuk pemasok lokal.', unit: 'Rupiah (IDR)', isNumeric: true, type: 'breakdown', aggType: 'sum', categories: ['Proporsi Pengeluaran Pemasok'], defaultItems: [{ id: 'sup_loc', name: 'Pemasok Lokal', category: 'Proporsi Pengeluaran Pemasok' }, { id: 'sup_nat', name: 'Pemasok Non-Lokal', category: 'Proporsi Pengeluaran Pemasok' }], policy: 'Pengadaan Lokal...', actions: 'Pemberdayaan vendor...', target: 'Pemasok Lokal > 70%', evidence: '' };
-    if (code === '302-1') return { description: 'Total konsumsi energi di dalam organisasi.', unit: 'Gigajoule (GJ)', isNumeric: true, type: 'breakdown', aggType: 'sum', categories: ['Bahan Bakar Fosil (Non-Renewable)', 'Listrik & Utilitas (Grid)', 'Energi Terbarukan (Renewable)'], defaultItems: [{ id: 'en_nr_1', name: 'Solar / Diesel', category: 'Bahan Bakar Fosil (Non-Renewable)' }, { id: 'en_nr_2', name: 'Batu Bara / Gas Alam', category: 'Bahan Bakar Fosil (Non-Renewable)' }, { id: 'en_gr_1', name: 'Listrik PLN', category: 'Listrik & Utilitas (Grid)' }, { id: 'en_re_1', name: 'Solar Panel', category: 'Energi Terbarukan (Renewable)' }], policy: 'Efisiensi Energi...', actions: 'Retrofit...', target: 'Efisiensi 5%', evidence: '' };
-    if (code === '303-3') return { description: 'Total volume air yang ditarik.', unit: 'Megaliter (ML)', isNumeric: true, type: 'breakdown', aggType: 'sum', categories: ['Air Tanah', 'Air Permukaan', 'Air Pihak Ketiga (PDAM)'], defaultItems: [{ id: 'wat_1', name: 'Sumur Bor', category: 'Air Tanah' }, { id: 'wat_2', name: 'Sungai / Danau', category: 'Air Permukaan' }, { id: 'wat_3', name: 'Suplai PDAM', category: 'Air Pihak Ketiga (PDAM)' }], policy: 'Konservasi Air...', actions: 'Sirkulasi...', target: 'Efisiensi Air 10%', evidence: '' };
-    if (code.startsWith('306')) return { description: 'Total berat limbah yang dihasilkan.', unit: 'Metrik Ton (t)', isNumeric: true, type: 'breakdown', aggType: 'sum', categories: ['Limbah B3 (Berbahaya)', 'Limbah Non-B3 (Aman)'], defaultItems: [{ id: 'b3_1', name: 'Oli Bekas', category: 'Limbah B3 (Berbahaya)' }, { id: 'b3_2', name: 'Limbah Medis', category: 'Limbah B3 (Berbahaya)' }, { id: 'nb3_1', name: 'Kertas & Kemasan', category: 'Limbah Non-B3 (Aman)' }, { id: 'nb3_2', name: 'Sisa Organik', category: 'Limbah Non-B3 (Aman)' }], policy: 'Sirkular Ekonomi...', actions: 'Pemisahan limbah...', target: 'Zero Waste to Landfill', evidence: '' };
+  useEffect(() => {
+    setSelectedYear(reportingYear);
+  }, [reportingYear]);
+
+  const getGriDetails = (code: string) => {
+    if (code === 'IFRS-S2-1') return { description: 'Pengungkapan hasil Uji Stres Risiko Iklim (CRST) tingkat korporat mencakup skenario yang digunakan, proyeksi peningkatan Probability of Default (PD), Loss Given Default (LGD), dan dampaknya terhadap Capital Adequacy Ratio (CAR).', unit: 'Persentase (%)', isNumeric: false, type: 'tcfd_strategy' };
+    if (code === 'IFRS-S2-2') return { description: 'Pengungkapan target penurunan emisi yang dibiayai (Financed Emissions) serta penerapan Internal Carbon Pricing (ICP) dalam operasional dan pengambilan keputusan investasi.', unit: 'Nilai', isNumeric: false, type: 'tcfd_metrics' };
+
+    if (code === '302-3') return { description: 'Rasio energi yang digunakan untuk setiap unit aktivitas/produksi.', unit: 'GJ / Unit', isNumeric: true, type: 'intensity' };
+    if (code === '305-4') return { description: 'Rasio emisi Gas Rumah Kaca terhadap metrik spesifik organisasi.', unit: 'tCO2e / Unit', isNumeric: true, type: 'intensity' };
+    if (code === '2-7') return { description: 'Total jumlah karyawan yang bekerja untuk organisasi.', unit: 'Orang', isNumeric: true, type: 'breakdown', aggType: 'sum', categories: ['Berdasarkan Status Kontrak', 'Berdasarkan Tipe Pekerjaan'], defaultItems: [{ id: 'emp_p', name: 'Karyawan Tetap', category: 'Berdasarkan Status Kontrak' }, { id: 'emp_t', name: 'Karyawan Kontrak', category: 'Berdasarkan Status Kontrak' }, { id: 'emp_ft', name: 'Penuh Waktu', category: 'Berdasarkan Tipe Pekerjaan' }, { id: 'emp_pt', name: 'Paruh Waktu', category: 'Berdasarkan Tipe Pekerjaan' }] };
+    if (code === '405-1') return { description: 'Komposisi karyawan dan badan tata kelola perusahaan.', unit: 'Orang', isNumeric: true, type: 'breakdown', aggType: 'sum', categories: ['Berdasarkan Gender', 'Berdasarkan Kelompok Usia'], defaultItems: [{ id: 'div_g_1', name: 'Laki-laki', category: 'Berdasarkan Gender' }, { id: 'div_g_2', name: 'Perempuan', category: 'Berdasarkan Gender' }, { id: 'div_a_1', name: 'Di bawah 30 tahun', category: 'Berdasarkan Kelompok Usia' }, { id: 'div_a_2', name: '30 - 50 tahun', category: 'Berdasarkan Kelompok Usia' }, { id: 'div_a_3', name: 'Di atas 50 tahun', category: 'Berdasarkan Kelompok Usia' }] };
+    if (code === '204-1') return { description: 'Persentase pengadaan untuk pemasok lokal.', unit: 'Rupiah (IDR)', isNumeric: true, type: 'breakdown', aggType: 'sum', categories: ['Proporsi Pengeluaran Pemasok'], defaultItems: [{ id: 'sup_loc', name: 'Pemasok Lokal', category: 'Proporsi Pengeluaran Pemasok' }, { id: 'sup_nat', name: 'Pemasok Non-Lokal', category: 'Proporsi Pengeluaran Pemasok' }] };
+    if (code === '302-1') return { description: 'Total konsumsi energi di dalam organisasi.', unit: 'Gigajoule (GJ)', isNumeric: true, type: 'breakdown', aggType: 'sum', categories: ['Bahan Bakar Fosil (Non-Renewable)', 'Listrik & Utilitas (Grid)', 'Energi Terbarukan (Renewable)'], defaultItems: [{ id: 'en_nr_1', name: 'Solar / Diesel', category: 'Bahan Bakar Fosil (Non-Renewable)' }, { id: 'en_nr_2', name: 'Batu Bara / Gas Alam', category: 'Bahan Bakar Fosil (Non-Renewable)' }, { id: 'en_gr_1', name: 'Listrik PLN', category: 'Listrik & Utilitas (Grid)' }, { id: 'en_re_1', name: 'Solar Panel', category: 'Energi Terbarukan (Renewable)' }] };
+    if (code === '303-3') return { description: 'Total volume air yang ditarik.', unit: 'Megaliter (ML)', isNumeric: true, type: 'breakdown', aggType: 'sum', categories: ['Air Tanah', 'Air Permukaan', 'Air Pihak Ketiga (PDAM)'], defaultItems: [{ id: 'wat_1', name: 'Sumur Bor', category: 'Air Tanah' }, { id: 'wat_2', name: 'Sungai / Danau', category: 'Air Permukaan' }, { id: 'wat_3', name: 'Suplai PDAM', category: 'Air Pihak Ketiga (PDAM)' }] };
+    if (code.startsWith('306')) return { description: 'Total berat limbah yang dihasilkan.', unit: 'Metrik Ton (t)', isNumeric: true, type: 'breakdown', aggType: 'sum', categories: ['Limbah B3 (Berbahaya)', 'Limbah Non-B3 (Aman)'], defaultItems: [{ id: 'b3_1', name: 'Oli Bekas', category: 'Limbah B3 (Berbahaya)' }, { id: 'b3_2', name: 'Limbah Medis', category: 'Limbah B3 (Berbahaya)' }, { id: 'nb3_1', name: 'Kertas & Kemasan', category: 'Limbah Non-B3 (Aman)' }, { id: 'nb3_2', name: 'Sisa Organik', category: 'Limbah Non-B3 (Aman)' }] };
     
-    if (code === '2-1') return { description: 'Melaporkan nama entitas hukum, sifat kepemilikan/bentuk hukum, lokasi kantor pusat, dan negara tempat entitas beroperasi.', unit: 'Naratif', isNumeric: false, type: 'narrative', policy: '', actions: '', target: '', evidence: '' };
-    if (code === '2-2') return { description: 'Menjelaskan entitas (anak perusahaan, cabang, joint venture) yang dicakup dalam pelaporan keberlanjutan ini.', unit: 'Naratif', isNumeric: false, type: 'narrative', policy: '', actions: '', target: '', evidence: '' };
-    if (code === '2-3') return { description: 'Menyebutkan periode pelaporan (misal: 1 Jan - 31 Des), frekuensi penerbitan, dan kontak penanggung jawab.', unit: 'Naratif', isNumeric: false, type: 'narrative', policy: '', actions: '', target: '', evidence: '' };
-    if (code === '2-4') return { description: 'Menjelaskan penyajikan kembali informasi jika ada revisi atau koreksi dari data yang dilaporkan pada tahun-tahun sebelumnya.', unit: 'Naratif', isNumeric: false, type: 'narrative', policy: '', actions: '', target: '', evidence: '' };
-    if (code === '2-5') return { description: 'Menjelaskan kebijakan dan praktik jaminan eksternal (external assurance) yang memvalidasi laporan ini.', unit: 'Naratif', isNumeric: false, type: 'narrative', policy: '', actions: '', target: '', evidence: '' };
-    if (code === '2-6') return { description: 'Menjabarkan sektor operasi operasional, produk/jasa utama, pasar yang dilayani, serta struktur rantai pasokan perusahaan.', unit: 'Naratif', isNumeric: false, type: 'narrative', policy: '', actions: '', target: '', evidence: '' };
-    if (code === '2-9') return { description: 'Menjelaskan struktur tata kelola perusahaan, termasuk komposisi dan komite-komite di bawah dewan direksi/komisaris.', unit: 'Naratif', isNumeric: false, type: 'narrative', policy: '', actions: '', target: '', evidence: '' };
-    if (code === '2-10') return { description: 'Menguraikan proses serta kriteria (seperti keahlian, keanekaragaman, independensi) dalam mencalonkan dan memilih anggota tata kelola.', unit: 'Naratif', isNumeric: false, type: 'narrative', policy: '', actions: '', target: '', evidence: '' };
-    if (code === '2-11') return { description: 'Menjelaskan apakah Ketua Badan Tata Kelola (Presiden Komisaris/Ketua Dewan) merangkap jabatan eksekutif lainnya beserta alasannya.', unit: 'Naratif', isNumeric: false, type: 'narrative', policy: '', actions: '', target: '', evidence: '' };
-    if (code === '2-12') return { description: 'Menguraikan bagaimana peran dewan dalam mengawasi pengelolaan dampak ekonomi, lingkungan, dan sosial organisasi.', unit: 'Naratif', isNumeric: false, type: 'narrative', policy: '', actions: '', target: '', evidence: '' };
-    if (code === '2-13') return { description: 'Menjelaskan bagaimana wewenang pengelolaan dampak keberlanjutan didelegasikan dari dewan kepada pimpinan eksekutif senior.', unit: 'Naratif', isNumeric: false, type: 'narrative', policy: '', actions: '', target: '', evidence: '' };
-    if (code === '2-14') return { description: 'Menjelaskan proses badan tata kelola tertinggi dalam meninjau dan secara resmi menyetujui laporan keberlanjutan ini.', unit: 'Naratif', isNumeric: false, type: 'narrative', policy: '', actions: '', target: '', evidence: '' };
-    if (code === '2-15') return { description: 'Menguraikan mekanisme tata kelola dalam perusahaan untuk mengidentifikasi, mencegah, dan mengelola konflik/benturan kepentingan.', unit: 'Naratif', isNumeric: false, type: 'narrative', policy: '', actions: '', target: '', evidence: '' };
-    if (code === '2-16') return { description: 'Menjelaskan mekanisme bagaimana keluhan atau masalah kritis dikomunikasikan secara langsung ke dewan pengawas.', unit: 'Naratif', isNumeric: false, type: 'narrative', policy: '', actions: '', target: '', evidence: '' };
-    if (code.startsWith('2-')) return { description: 'Pengungkapan naratif mengenai praktik tata kelola, strategi, atau kebijakan organisasi sesuai pedoman GRI 2.', unit: 'Naratif', isNumeric: false, type: 'narrative', policy: '', actions: '', target: '', evidence: '' };
+    if (code === '2-1') return { description: 'Melaporkan nama entitas hukum, sifat kepemilikan/bentuk hukum, lokasi kantor pusat, dan negara tempat entitas beroperasi.', unit: 'Naratif', isNumeric: false, type: 'narrative' };
+    if (code === '2-2') return { description: 'Menjelaskan entitas (anak perusahaan, cabang, joint venture) yang dicakup dalam pelaporan keberlanjutan ini.', unit: 'Naratif', isNumeric: false, type: 'narrative' };
+    if (code === '2-3') return { description: 'Menyebutkan periode pelaporan (misal: 1 Jan - 31 Des), frekuensi penerbitan, dan kontak penanggung jawab.', unit: 'Naratif', isNumeric: false, type: 'narrative' };
+    if (code === '2-4') return { description: 'Menjelaskan penyajikan kembali informasi jika ada revisi atau koreksi dari data yang dilaporkan pada tahun-tahun sebelumnya.', unit: 'Naratif', isNumeric: false, type: 'narrative' };
+    if (code === '2-5') return { description: 'Menjelaskan kebijakan dan praktik jaminan eksternal (external assurance) yang memvalidasi laporan ini.', unit: 'Naratif', isNumeric: false, type: 'narrative' };
+    if (code === '2-6') return { description: 'Menjabarkan sektor operasi operasional, produk/jasa utama, pasar yang dilayani, serta struktur rantai pasokan perusahaan.', unit: 'Naratif', isNumeric: false, type: 'narrative' };
+    if (code === '2-9') return { description: 'Menjelaskan struktur tata kelola perusahaan, termasuk komposisi dan komite-komite di bawah dewan direksi/komisaris.', unit: 'Naratif', isNumeric: false, type: 'narrative' };
+    if (code === '2-10') return { description: 'Menguraikan proses serta kriteria (seperti keahlian, keanekaragaman, independensi) dalam mencalonkan dan memilih anggota tata kelola.', unit: 'Naratif', isNumeric: false, type: 'narrative' };
+    if (code === '2-11') return { description: 'Menjelaskan apakah Ketua Badan Tata Kelola (Presiden Komisaris/Ketua Dewan) merangkap jabatan eksekutif lainnya beserta alasannya.', unit: 'Naratif', isNumeric: false, type: 'narrative' };
+    if (code === '2-12') return { description: 'Menguraikan bagaimana peran dewan dalam mengawasi pengelolaan dampak ekonomi, lingkungan, dan sosial organisasi.', unit: 'Naratif', isNumeric: false, type: 'narrative' };
+    if (code === '2-13') return { description: 'Menjelaskan bagaimana wewenang pengelolaan dampak keberlanjutan didelegasikan dari dewan kepada pimpinan eksekutif senior.', unit: 'Naratif', isNumeric: false, type: 'narrative' };
+    if (code === '2-14') return { description: 'Menjelaskan proses badan tata kelola tertinggi dalam meninjau dan secara resmi menyetujui laporan keberlanjutan ini.', unit: 'Naratif', isNumeric: false, type: 'narrative' };
+    if (code === '2-15') return { description: 'Menguraikan mekanisme tata kelola dalam perusahaan untuk mengidentifikasi, mencegah, dan mengelola konflik/benturan kepentingan.', unit: 'Naratif', isNumeric: false, type: 'narrative' };
+    if (code === '2-16') return { description: 'Menjelaskan mekanisme bagaimana keluhan atau masalah kritis dikomunikasikan secara langsung ke dewan pengawas.', unit: 'Naratif', isNumeric: false, type: 'narrative' };
+    if (code.startsWith('2-')) return { description: 'Pengungkapan naratif mengenai praktik tata kelola, strategi, atau kebijakan organisasi sesuai pedoman GRI 2.', unit: 'Naratif', isNumeric: false, type: 'narrative' };
     
-    if (code === '201-1') return { description: 'Nilai ekonomi langsung yang dihasilkan.', unit: 'Rupiah (IDR)', isNumeric: true, type: 'absolute', aggType: 'sum', policy: '', actions: '', target: '', evidence: '' };
-    if (code.startsWith('305-1')) return { description: 'Emisi GRK Langsung (Cakupan 1).', unit: 'Metrik Ton CO2e', isNumeric: true, type: 'absolute', aggType: 'sum', policy: '', actions: '', target: '', evidence: '' };
-    if (code.startsWith('305-2')) return { description: 'Emisi GRK Energi Tidak Langsung (Cakupan 2).', unit: 'Metrik Ton CO2e', isNumeric: true, type: 'absolute', aggType: 'sum', policy: '', actions: '', target: '', evidence: '' };
-    if (code.startsWith('201') || code.startsWith('203') || code.startsWith('207')) return { description: 'Dampak ekonomi historis langsung.', unit: 'Rupiah (IDR)', isNumeric: true, type: 'absolute', aggType: 'sum', policy: '', actions: '', target: '', evidence: '' };
-    if (code.startsWith('202') || code.startsWith('308') || code.startsWith('414')) return { description: 'Persentase pemenuhan kriteria keberlanjutan.', unit: 'Persentase (%)', isNumeric: true, type: 'absolute', aggType: 'average', policy: '', actions: '', target: '', evidence: '' };
-    if (code.startsWith('205') || code.startsWith('206') || code.startsWith('403') || code.startsWith('418')) return { description: 'Jumlah total insiden tercatat.', unit: 'Kasus', isNumeric: true, type: 'absolute', aggType: 'sum', policy: '', actions: '', target: '', evidence: '' };
-    if (code.startsWith('301')) return { description: 'Jumlah material yang digunakan.', unit: 'Metrik Ton (t)', isNumeric: true, type: 'absolute', aggType: 'sum', policy: '', actions: '', target: '', evidence: '' };
-    if (code.startsWith('305')) return { description: 'Inventarisasi Gas Rumah Kaca (GRK).', unit: 'Metrik Ton CO2e', isNumeric: true, type: 'absolute', aggType: 'sum', policy: '', actions: '', target: '', evidence: '' };
-    if (code.startsWith('304')) return { description: 'Cakupan luasan area operasional.', unit: 'Hektar (ha)', isNumeric: true, type: 'absolute', aggType: 'sum', policy: '', actions: '', target: '', evidence: '' };
-    if (code.startsWith('401')) return { description: 'Total jumlah individu terkait ketenagakerjaan.', unit: 'Orang', isNumeric: true, type: 'absolute', aggType: 'sum', policy: '', actions: '', target: '', evidence: '' };
-    if (code.startsWith('402')) return { description: 'Rata-rata waktu pemberitahuan standar.', unit: 'Minggu', isNumeric: true, type: 'absolute', aggType: 'average', policy: '', actions: '', target: '', evidence: '' };
-    if (code.startsWith('404')) return { description: 'Rata-rata jam pelatihan per karyawan.', unit: 'Jam', isNumeric: true, type: 'absolute', aggType: 'average', policy: '', actions: '', target: '', evidence: '' };
-    if (code.startsWith('413')) return { description: 'Persentase operasi komunitas lokal.', unit: 'Persentase (%)', isNumeric: true, type: 'absolute', aggType: 'average', policy: '', actions: '', target: '', evidence: '' };
-    return { description: 'Silakan laporkan data kinerja.', unit: 'Nilai', isNumeric: true, type: 'absolute', aggType: 'sum', policy: '', actions: '', target: '', evidence: '' };
+    if (code === '201-1') return { description: 'Nilai ekonomi langsung yang dihasilkan.', unit: 'Rupiah (IDR)', isNumeric: true, type: 'absolute', aggType: 'sum' };
+    if (code.startsWith('305-1')) return { description: 'Emisi GRK Langsung (Cakupan 1).', unit: 'Metrik Ton CO2e', isNumeric: true, type: 'absolute', aggType: 'sum' };
+    if (code.startsWith('305-2')) return { description: 'Emisi GRK Energi Tidak Langsung (Cakupan 2).', unit: 'Metrik Ton CO2e', isNumeric: true, type: 'absolute', aggType: 'sum' };
+    if (code.startsWith('201') || code.startsWith('203') || code.startsWith('207')) return { description: 'Dampak ekonomi historis langsung.', unit: 'Rupiah (IDR)', isNumeric: true, type: 'absolute', aggType: 'sum' };
+    if (code.startsWith('202') || code.startsWith('308') || code.startsWith('414')) return { description: 'Persentase pemenuhan kriteria keberlanjutan.', unit: 'Persentase (%)', isNumeric: true, type: 'absolute', aggType: 'average' };
+    if (code.startsWith('205') || code.startsWith('206') || code.startsWith('403') || code.startsWith('418')) return { description: 'Jumlah total insiden tercatat.', unit: 'Kasus', isNumeric: true, type: 'absolute', aggType: 'sum' };
+    if (code.startsWith('301')) return { description: 'Jumlah material yang digunakan.', unit: 'Metrik Ton (t)', isNumeric: true, type: 'absolute', aggType: 'sum' };
+    if (code.startsWith('305')) return { description: 'Inventarisasi Gas Rumah Kaca (GRK).', unit: 'Metrik Ton CO2e', isNumeric: true, type: 'absolute', aggType: 'sum' };
+    if (code.startsWith('304')) return { description: 'Cakupan luasan area operasional.', unit: 'Hektar (ha)', isNumeric: true, type: 'absolute', aggType: 'sum' };
+    if (code.startsWith('401')) return { description: 'Total jumlah individu terkait ketenagakerjaan.', unit: 'Orang', isNumeric: true, type: 'absolute', aggType: 'sum' };
+    if (code.startsWith('402')) return { description: 'Rata-rata waktu pemberitahuan standar.', unit: 'Minggu', isNumeric: true, type: 'absolute', aggType: 'average' };
+    if (code.startsWith('404')) return { description: 'Rata-rata jam pelatihan per karyawan.', unit: 'Jam', isNumeric: true, type: 'absolute', aggType: 'average' };
+    if (code.startsWith('413')) return { description: 'Persentase operasi komunitas lokal.', unit: 'Persentase (%)', isNumeric: true, type: 'absolute', aggType: 'average' };
+    return { description: 'Silakan laporkan data kinerja.', unit: 'Nilai', isNumeric: true, type: 'absolute', aggType: 'sum' };
   };
 
   const handleAddSite = () => { if (!newSiteName.trim() || sites.includes(newSiteName.trim())) return; setSites(prev => [...prev, newSiteName.trim()]); setNewSiteName(''); setShowAddSiteModal(false); };
   const handleRemoveSite = (site: string) => { if (sites.length > 1) setSites(prev => prev.filter(s => s !== site)); };
 
-  // 🛠️ PERBAIKAN 2: Gunakan useMemo agar filter juga reaktif ketika activeDisclosures berubah
   const filteredDisclosures = useMemo(() => {
     return activeDisclosures.filter(d => {
       const matchesCategory = categoryFilter === 'ALL' ? true : categoryFilter === 'UNIVERSAL' ? d.gri_type === 'universal' : categoryFilter === 'TOPIC' ? d.gri_type === 'topic' : true;
@@ -101,7 +249,6 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
     });
   }, [activeDisclosures, categoryFilter, searchQuery]);
 
-  // 🛠️ PERBAIKAN 3: Menyempurnakan logika sinkronisasi menu aktif agar tidak bug saat berganti fase
   useEffect(() => {
     if (filteredDisclosures.length > 0) {
       const isCurrentInFiltered = filteredDisclosures.some(d => d.id === activeTopicId);
@@ -114,7 +261,6 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filteredDisclosures]);
 
-  // Handler saat Tab diklik agar langsung mengaktifkan item pertama
   const handleTabChange = (catId: 'ALL' | 'UNIVERSAL' | 'TOPIC') => {
     setCategoryFilter(catId);
   };
@@ -122,11 +268,76 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
   const handleManagementChange = (field: 'policy' | 'actions', value: string) => { setIsSaved(false); setManagementData(prev => ({ ...prev, [activeTopicId]: { ...(prev[activeTopicId] || { policy: '', actions: '' }), [field]: value } })); };
   const handleNarrativePerfChange = (value: string) => { setIsSaved(false); setPerfData(prev => ({ ...prev, [activeTopicId]: { ...(prev[activeTopicId] || {}), [selectedYear]: { ...(prev[activeTopicId]?.[selectedYear] || {}), narrativeValue: value } } })); };
   const handleIntensityDataChange = (field: 'denominator' | 'intensityUnit', value: any) => { setIsSaved(false); setPerfData(prev => ({ ...prev, [activeTopicId]: { ...(prev[activeTopicId] || {}), [selectedYear]: { ...(prev[activeTopicId]?.[selectedYear] || {}), intensityData: { ...(prev[activeTopicId]?.[selectedYear]?.intensityData || {}), [field]: value } } } })); };
-  const handleMetaChange = (field: 'target' | 'evidence', value: any) => { setIsSaved(false); setPerfData(prev => ({ ...prev, [activeTopicId]: { ...(prev[activeTopicId] || {}), [selectedYear]: { ...(prev[activeTopicId]?.[selectedYear] || {}), [field]: value } } })); };
+  const handleMetaChange = (field: 'target' | 'evidence' | 'bestPractice', value: any) => { setIsSaved(false); setPerfData(prev => ({ ...prev, [activeTopicId]: { ...(prev[activeTopicId] || {}), [selectedYear]: { ...(prev[activeTopicId]?.[selectedYear] || {}), [field]: value } } })); };
   
+  // 🌟 MODIFIKASI: MESIN SIMPAN DAN LOG AUDIT
   const handleSaveTopic = () => { 
     setIsSaved(true); 
     setTimeout(() => setIsSaved(false), 3000); 
+
+    // Mencatat Log Audit secara lokal (MOCKUP)
+    const newLog = {
+      id: Date.now(),
+      timestamp: new Date().toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'medium' }),
+      actor: 'Admin ESG (Anda)',
+      action: 'UPDATE',
+      details: `Menyimpan pembaruan data untuk tahun ${selectedYear}.`
+    };
+
+    setMockAuditLogs(prev => {
+      const currentLogs = prev[activeTopicId] || [];
+      return {
+        ...prev,
+        [activeTopicId]: [newLog, ...currentLogs]
+      };
+    });
+
+    // -------------------------------------------------------------
+    // TEMPAT IMPLEMENTASI DB SUPABASE ASLI:
+    // await supabase.from('audit_logs').insert({
+    //    topic_id: activeTopicId,
+    //    reporting_year: selectedYear,
+    //    action_type: 'UPDATE',
+    //    modified_by: user.id
+    // });
+    // -------------------------------------------------------------
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Ukuran file terlalu besar! Maksimal 5 MB.');
+      e.target.value = '';
+      return;
+    }
+
+    const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
+    if (!allowedTypes.includes(file.type)) {
+      alert('Format file tidak didukung! Harap unggah dokumen PDF, JPG, atau PNG.');
+      e.target.value = '';
+      return;
+    }
+
+    setIsUploading(true);
+    
+    try {
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      const localMockUrl = URL.createObjectURL(file);
+      handleMetaChange('evidence', localMockUrl);
+    } catch (err) {
+      alert('Gagal mengunggah file. Periksa koneksi Anda.');
+    } finally {
+      setIsUploading(false);
+      e.target.value = ''; 
+    }
+  };
+
+  const handleRemoveEvidence = () => {
+    if (confirm('Hapus tautan bukti ini?')) {
+      handleMetaChange('evidence', '');
+    }
   };
 
   const handleSiteDataChange = (site: string, value: number | null, subField?: string) => { 
@@ -159,7 +370,7 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
   const currentTopic = activeDisclosures.find((d) => d.id === activeTopicId) || activeDisclosures[0];
   const details = getGriDetails(currentTopic?.disclosure_code || '');
   const currentMgmt = managementData[activeTopicId] || { policy: '', actions: '' };
-  const currentPerf = perfData[activeTopicId]?.[selectedYear] || { sites: {}, narrativeValue: '', target: '', evidence: '', intensityData: { denominator: '', intensityUnit: '' }, tcfdData: {} };
+  const currentPerf = perfData[activeTopicId]?.[selectedYear] || { sites: {}, narrativeValue: '', target: '', evidence: '', bestPractice: '', intensityData: { denominator: '', intensityUnit: '' }, tcfdData: {} };
 
   const breakdownItems = perfData[activeTopicId]?.[0]?.breakdownItems || details.defaultItems || [];
 
@@ -245,35 +456,36 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
 
       csv += `--------------------------------------------------\n`;
       csv += `KODE STANDAR,${topic.disclosure_code}\n`;
-      csv += `JUDUL PENGUNGKAPAN,${topic.title_id || topic.title_en}\n`;
+      csv += `JUDUL PENGUNGKAPAN,${sanitizeCSV(topic.title_id || topic.title_en)}\n`;
       csv += `--------------------------------------------------\n`;
-      csv += `Pendekatan Manajemen,"${(tMgmt.policy || '-').replace(/"/g, '""')}"\n`;
-      csv += `Target Internal,"${(tPerf.target || '-').replace(/"/g, '""')}"\n`;
-      csv += `Tautan Bukti,"${(tPerf.evidence || '-').replace(/"/g, '""')}"\n\n`;
+      csv += `Pendekatan Manajemen,${sanitizeCSV(tMgmt.policy || '-')}\n`;
+      csv += `Target Internal,${sanitizeCSV(tPerf.target || '-')}\n`;
+      csv += `Tautan Bukti,${sanitizeCSV(tPerf.evidence || '-')}\n`;
+      csv += `Sorotan Program / Best Practice,${sanitizeCSV(tPerf.bestPractice || '-')}\n\n`;
 
       if (tDetails.type === 'narrative') {
-        csv += `Uraian Kualitatif,"${(tPerf.narrativeValue || '-').replace(/"/g, '""')}"\n\n`;
+        csv += `Uraian Kualitatif,${sanitizeCSV(tPerf.narrativeValue || '-')}\n\n`;
       } 
       else if (tDetails.type === 'tcfd_strategy') {
         csv += `HASIL UJI STRES RISIKO IKLIM (CRST)\n`;
-        csv += `Skenario Transisi Utama,${tPerf.tcfdData?.transitionScenario || '-'}\n`;
-        csv += `Skenario Fisik Utama,${tPerf.tcfdData?.physicalScenario || '-'}\n`;
-        csv += `Estimasi Kenaikan Maks. PD (%),${tPerf.tcfdData?.pdImpact || '-'}\n`;
-        csv += `Estimasi Penurunan CAR (%),${tPerf.tcfdData?.carImpact || '-'}\n\n`;
+        csv += `Skenario Transisi Utama,${sanitizeCSV(tPerf.tcfdData?.transitionScenario || '-')}\n`;
+        csv += `Skenario Fisik Utama,${sanitizeCSV(tPerf.tcfdData?.physicalScenario || '-')}\n`;
+        csv += `Estimasi Kenaikan Maks. PD (%),${sanitizeCSV(tPerf.tcfdData?.pdImpact || '-')}\n`;
+        csv += `Estimasi Penurunan CAR (%),${sanitizeCSV(tPerf.tcfdData?.carImpact || '-')}\n\n`;
       }
       else if (tDetails.type === 'tcfd_metrics') {
         csv += `METRIK DAN TARGET RISIKO IKLIM\n`;
-        csv += `Target Penurunan Financed Emissions (%),${tPerf.tcfdData?.feTarget || '-'}\n`;
-        csv += `Tahun Pencapaian Target,${tPerf.tcfdData?.targetYear || '-'}\n`;
-        csv += `Metodologi Penetapan Target,${tPerf.tcfdData?.methodology || '-'}\n`;
-        csv += `Harga Karbon Internal (Rp/tCO2e),${tPerf.tcfdData?.icp || '-'}\n\n`;
+        csv += `Target Penurunan Financed Emissions (%),${sanitizeCSV(tPerf.tcfdData?.feTarget || '-')}\n`;
+        csv += `Tahun Pencapaian Target,${sanitizeCSV(tPerf.tcfdData?.targetYear || '-')}\n`;
+        csv += `Metodologi Penetapan Target,${sanitizeCSV(tPerf.tcfdData?.methodology || '-')}\n`;
+        csv += `Harga Karbon Internal (Rp/tCO2e),${sanitizeCSV(tPerf.tcfdData?.icp || '-')}\n\n`;
       }
       else if (tDetails.type === 'intensity') {
         let tInt = 0;
         if (parseFloat(tPerf.intensityData?.denominator) > 0 && tNumerator > 0) tInt = tNumerator / parseFloat(tPerf.intensityData.denominator);
         csv += `Total Absolut (Pembilang),${tNumerator}\n`;
-        csv += `Faktor Normalisasi (Penyebut),${tPerf.intensityData?.denominator || 0}\n`;
-        csv += `Satuan Normalisasi,${tPerf.intensityData?.intensityUnit || '-'}\n`;
+        csv += `Faktor Normalisasi (Penyebut),${sanitizeCSV(tPerf.intensityData?.denominator || 0)}\n`;
+        csv += `Satuan Normalisasi,${sanitizeCSV(tPerf.intensityData?.intensityUnit || '-')}\n`;
         csv += `Hasil Rasio Intensitas,${tInt}\n\n`;
       } 
       else if (tDetails.type === 'breakdown') {
@@ -317,7 +529,6 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
   };
 
   return (
-    // 🛠️ PERBAIKAN 4: Mengubah min-h-[850px] menjadi batasan tinggi dinamis h-[calc(100vh-140px)] agar scrollbar dalam kolom muncul dan halaman tidak melar
     <div className="bg-white rounded-2xl shadow-xl border border-slate-200 flex overflow-hidden h-[calc(100vh-160px)] min-h-[600px] relative print:border-none print:shadow-none print:h-auto">
       
       {showAddSiteModal && (
@@ -347,7 +558,44 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
         </div>
       )}
 
-      {/* PANEL KIRI: DAFTAR INDIKATOR */}
+      {/* 🌟 MODAL AUDIT TRAIL (JEJAK RIWAYAT) */}
+      {showAuditModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-4 print:hidden">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full flex flex-col max-h-[80vh]">
+            <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-slate-50 rounded-t-2xl">
+              <div>
+                <h3 className="text-sm font-bold text-slate-800">Jejak Rekam Audit (Audit Trail)</h3>
+                <p className="text-[10px] text-slate-500">Riwayat perubahan data untuk {currentTopic?.disclosure_code}</p>
+              </div>
+              <button onClick={() => setShowAuditModal(false)} className="text-slate-400 hover:text-red-500 text-lg">✕</button>
+            </div>
+            <div className="p-6 overflow-y-auto flex-1 space-y-4 bg-slate-50/50">
+              {mockAuditLogs[activeTopicId] && mockAuditLogs[activeTopicId].length > 0 ? (
+                mockAuditLogs[activeTopicId].map((log) => (
+                  <div key={log.id} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-start gap-4 relative">
+                    <div className="bg-emerald-100 text-emerald-600 w-8 h-8 rounded-full flex items-center justify-center shrink-0 border border-emerald-200">
+                      <span className="text-xs">💾</span>
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex justify-between items-start mb-1">
+                        <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-100 rounded text-slate-600">{log.action}</span>
+                        <span className="text-[10px] font-mono text-slate-400">{log.timestamp}</span>
+                      </div>
+                      <p className="text-xs text-slate-700 mt-2 font-medium">{log.details}</p>
+                      <p className="text-[10px] text-slate-500 mt-1">Oleh: <strong className="text-slate-700">{log.actor}</strong></p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-10 text-slate-400 text-xs italic bg-white rounded-xl border border-dashed border-slate-300">
+                  Belum ada rekaman jejak audit untuk indikator ini.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="w-1/3 bg-slate-50 border-r border-slate-200 flex flex-col print:hidden">
         <div className="p-4 border-b border-slate-200 bg-white sticky top-0 z-10 space-y-3">
           <h3 className="font-bold text-slate-800 text-sm">Daftar Indikator</h3>
@@ -368,7 +616,6 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
             ))}
           </div>
         </div>
-        {/* Kolom Daftar Topik ini sekarang akan otomatis memunculkan scrollbar! */}
         <div className="overflow-y-auto flex-1 p-2 space-y-1.5">
           {filteredDisclosures.map((d) => {
             const isTcfd = d.disclosure_code.startsWith('IFRS');
@@ -382,7 +629,6 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
         </div>
       </div>
 
-      {/* PANEL KANAN: FORM ISIAN RINCIAN */}
       <div className="w-2/3 flex flex-col relative bg-slate-50/50 print:w-full print:bg-white">
         
         <div className="p-6 border-b border-slate-200 bg-slate-900 text-white shadow-md print:bg-white print:text-black print:border-b-2 print:border-slate-800 print:shadow-none">
@@ -390,6 +636,13 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
             <div>
               <span className={`text-[10px] font-mono font-bold uppercase tracking-wider print:border print:px-2 print:py-0.5 ${currentTopic?.disclosure_code.startsWith('IFRS') ? 'text-blue-400 print:text-blue-700 print:border-blue-700' : 'text-emerald-400 print:text-emerald-700 print:border-emerald-700'}`}>{currentTopic?.disclosure_code}</span>
               <h2 className="text-xl font-bold mt-1 mb-2 leading-tight">{currentTopic?.title_id || currentTopic?.title_en}</h2>
+              <div className="flex flex-wrap gap-1.5 mt-2 print:hidden">
+                {getCrossReference(currentTopic?.disclosure_code).map(ref => (
+                  <span key={ref} className="bg-slate-800 text-emerald-300 text-[9px] font-bold px-2 py-0.5 rounded border border-slate-700">
+                    {ref}
+                  </span>
+                ))}
+              </div>
             </div>
             
             <div className="relative print:hidden">
@@ -409,17 +662,25 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
               )}
             </div>
           </div>
-          <p className="text-xs text-slate-300 leading-relaxed font-medium bg-slate-800/50 p-3 rounded-lg border border-slate-700 mt-2 print:bg-transparent print:border-none print:text-slate-700 print:p-0">{details.description}</p>
+          <p className="text-xs text-slate-300 leading-relaxed font-medium bg-slate-800/50 p-3 rounded-lg border border-slate-700 mt-3 print:bg-transparent print:border-none print:text-slate-700 print:p-0">{details.description}</p>
         </div>
 
-        {/* Kolom Form Isian ini juga akan otomatis memunculkan scrollbar! */}
         <div className="p-6 overflow-y-auto flex-1 space-y-6 print:p-0 print:mt-6 print:overflow-visible">
 
           <div className={`bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden print:shadow-none ${currentTopic?.disclosure_code.startsWith('IFRS') ? 'hidden' : 'block'}`}>
             <div className="absolute top-0 left-0 w-1 h-full bg-blue-500 print:hidden"></div>
             <h3 className="text-xs font-bold text-slate-800 mb-4 border-b border-slate-100 pb-2">Pendekatan Manajemen (GRI 3-3)</h3>
             <div className="space-y-4">
-              <div><label className="block text-xs font-bold text-slate-700 mb-1">Dasar Kebijakan</label><textarea rows={2} value={currentMgmt.policy} onChange={(e) => handleManagementChange('policy', e.target.value)} className="w-full p-2.5 text-xs border border-slate-300 rounded-xl bg-slate-50 outline-none print:border-none print:bg-transparent print:resize-none" /></div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Dasar Kebijakan</label>
+                <SafeTextArea 
+                  rows={2} 
+                  value={currentMgmt.policy} 
+                  onChange={(val: string) => handleManagementChange('policy', val)} 
+                  placeholder={getPolicyPlaceholder(currentTopic?.disclosure_code)} 
+                  className="w-full p-2.5 text-xs border border-slate-300 rounded-xl bg-slate-50 outline-none focus:ring-2 focus:ring-emerald-500 print:border-none print:bg-transparent print:resize-none" 
+                />
+              </div>
             </div>
           </div>
 
@@ -438,7 +699,6 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
                   <button onClick={() => setShowAddSiteModal(true)} className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg hover:bg-emerald-100 transition shadow-sm">+ Tambah Lokasi (Site)</button>
                 )}
                 
-                {/* PEMILIH TAHUN */}
                 <div className="flex bg-slate-100 rounded-lg p-1 border border-slate-200">
                   {years.map((year) => {
                     const isSelected = selectedYear === year;
@@ -455,12 +715,11 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
               <div className={`hidden print:block text-sm font-bold ${currentTopic?.disclosure_code.startsWith('IFRS') ? 'text-blue-700' : 'text-emerald-700'}`}>Tahun Pelaporan: {selectedYear}</div>
             </div>
 
-            {/* FORM TCFD (STRATEGI UJI STRES IKLIM) */}
             {details.type === 'tcfd_strategy' && (
               <div className="space-y-5">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-2">Skenario Transisi Utama (Transition Scenario)</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-2">Skenario Transisi Utama</label>
                     <select value={currentPerf.tcfdData?.transitionScenario || ''} onChange={(e) => handleTcfdChange('transitionScenario', e.target.value)} className="w-full p-3 text-xs border border-slate-300 rounded-xl bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500 print:border-none print:bg-transparent print:appearance-none">
                       <option value="">-- Pilih Skenario Transisi (NGFS) --</option>
                       <option value="NGFS Current Policies">NGFS Current Policies (Kebijakan Saat Ini)</option>
@@ -469,7 +728,7 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-2">Skenario Fisik Utama (Physical Scenario)</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-2">Skenario Fisik Utama</label>
                     <select value={currentPerf.tcfdData?.physicalScenario || ''} onChange={(e) => handleTcfdChange('physicalScenario', e.target.value)} className="w-full p-3 text-xs border border-slate-300 rounded-xl bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500 print:border-none print:bg-transparent print:appearance-none">
                       <option value="">-- Pilih Skenario Fisik (IPCC) --</option>
                       <option value="IPCC RCP 2.6 (Ambisius)">IPCC RCP 2.6 (Mitigasi Tinggi)</option>
@@ -480,16 +739,16 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-100 print:border-slate-300">
                   <div className="bg-red-50 p-4 rounded-xl border border-red-100 print:bg-white print:border-slate-300">
-                    <label className="block text-[10px] font-bold text-red-800 uppercase tracking-wider mb-2">Estimasi Peningkatan Gagal Bayar (PD) Maksimal</label>
+                    <label className="block text-[10px] font-bold text-red-800 uppercase tracking-wider mb-2">Estimasi Peningkatan Gagal Bayar (PD)</label>
                     <div className="flex items-center gap-2">
-                      <input type="number" step="any" value={currentPerf.tcfdData?.pdImpact || ''} onChange={(e) => handleTcfdChange('pdImpact', e.target.value)} placeholder="Contoh: 2.13" className="w-full p-3 text-2xl font-black font-mono text-red-900 border border-red-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 print:border-none print:bg-transparent" />
+                      <SafeNumericInput placeholder="Contoh: 2.13" value={currentPerf.tcfdData?.pdImpact} onChange={(val: any) => handleTcfdChange('pdImpact', val)} className="w-full p-3 text-2xl font-black font-mono text-red-900 border border-red-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 print:border-none print:bg-transparent" />
                       <span className="text-lg font-bold text-red-700">%</span>
                     </div>
                   </div>
                   <div className="bg-orange-50 p-4 rounded-xl border border-orange-100 print:bg-white print:border-slate-300">
                     <label className="block text-[10px] font-bold text-orange-800 uppercase tracking-wider mb-2">Estimasi Penurunan Ketahanan Modal (CAR)</label>
                     <div className="flex items-center gap-2">
-                      <input type="number" step="any" value={currentPerf.tcfdData?.carImpact || ''} onChange={(e) => handleTcfdChange('carImpact', e.target.value)} placeholder="Contoh: 1.29" className="w-full p-3 text-2xl font-black font-mono text-orange-900 border border-orange-200 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 print:border-none print:bg-transparent" />
+                      <SafeNumericInput placeholder="Contoh: 1.29" value={currentPerf.tcfdData?.carImpact} onChange={(val: any) => handleTcfdChange('carImpact', val)} className="w-full p-3 text-2xl font-black font-mono text-orange-900 border border-orange-200 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 print:border-none print:bg-transparent" />
                       <span className="text-lg font-bold text-orange-700">%</span>
                     </div>
                   </div>
@@ -497,21 +756,20 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
               </div>
             )}
 
-            {/* FORM TCFD (METRIK HARGA KARBON DAN EMISI DIBIAYAI) */}
             {details.type === 'tcfd_metrics' && (
               <div className="space-y-5">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-2">Target Penurunan Financed Emissions</label>
                     <div className="flex items-center gap-2">
-                      <input type="number" step="any" value={currentPerf.tcfdData?.feTarget || ''} onChange={(e) => handleTcfdChange('feTarget', e.target.value)} placeholder="Cth: 42" className="w-full p-3 text-xs border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 print:border-none print:bg-transparent" />
+                      <SafeNumericInput placeholder="Cth: 42" value={currentPerf.tcfdData?.feTarget} onChange={(val: any) => handleTcfdChange('feTarget', val)} className="w-full p-3 text-xs border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 print:border-none print:bg-transparent" />
                       <span className="text-xs font-bold text-slate-500">%</span>
                     </div>
                   </div>
                   <div className="flex gap-4">
                     <div className="flex-1">
                       <label className="block text-xs font-bold text-slate-700 mb-2">Tahun Pencapaian Target</label>
-                      <input type="number" value={currentPerf.tcfdData?.targetYear || ''} onChange={(e) => handleTcfdChange('targetYear', e.target.value)} placeholder="Cth: 2030" className="w-full p-3 text-xs border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 print:border-none print:bg-transparent" />
+                      <SafeNumericInput placeholder="Cth: 2030" value={currentPerf.tcfdData?.targetYear} onChange={(val: any) => handleTcfdChange('targetYear', val)} className="w-full p-3 text-xs border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 print:border-none print:bg-transparent" />
                     </div>
                     <div className="flex-1">
                       <label className="block text-xs font-bold text-slate-700 mb-2">Metodologi (SBTi)</label>
@@ -528,11 +786,11 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
                   <div className="bg-blue-50 p-5 rounded-xl border border-blue-100 flex flex-col md:flex-row items-center gap-6 print:bg-white print:border-slate-300">
                     <div className="w-full md:w-1/2">
                       <label className="block text-[10px] font-bold text-blue-800 uppercase tracking-wider mb-2">Penetapan Harga Karbon Internal (Internal Carbon Pricing)</label>
-                      <p className="text-[10px] text-blue-600 mb-2 print:text-slate-600">Digunakan sebagai bayangan harga (shadow price) untuk evaluasi investasi proyek karbon tinggi.</p>
+                      <p className="text-[10px] text-blue-600 mb-2 print:text-slate-600">Digunakan sebagai bayangan harga (shadow price) untuk evaluasi investasi.</p>
                     </div>
                     <div className="w-full md:w-1/2 flex items-center gap-3">
                       <span className="text-lg font-bold text-blue-800">Rp</span>
-                      <input type="number" step="any" value={currentPerf.tcfdData?.icp || ''} onChange={(e) => handleTcfdChange('icp', e.target.value)} placeholder="Contoh: 1406023" className="w-full p-3 text-2xl font-black font-mono text-blue-900 border border-blue-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 print:border-none print:bg-transparent" />
+                      <SafeNumericInput placeholder="Contoh: 1406023" value={currentPerf.tcfdData?.icp} onChange={(val: any) => handleTcfdChange('icp', val)} className="w-full p-3 text-2xl font-black font-mono text-blue-900 border border-blue-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 print:border-none print:bg-transparent" />
                       <span className="text-xs font-bold text-blue-700">/ tCO2e</span>
                     </div>
                   </div>
@@ -540,7 +798,6 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
               </div>
             )}
 
-            {/* TABEL DENGAN KALKULATOR INTENSITAS */}
             {details.type === 'intensity' && (
               <div className="border-2 border-purple-200 rounded-xl bg-gradient-to-r from-purple-50 to-indigo-50 overflow-hidden shadow-sm print:border-slate-300 print:bg-white print:shadow-none">
                 <div className="bg-purple-800 p-3 print:bg-slate-100 print:text-black print:border-b"><h4 className="text-xs font-bold text-white print:text-slate-800 flex items-center gap-2"><span>⚡</span> Kalkulator Intensitas ({selectedYear})</h4></div>
@@ -556,7 +813,7 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-3 border-t border-purple-200 print:border-slate-200">
                     <div>
                       <label className="block text-xs font-bold text-purple-900 mb-1.5 print:text-black">2. Faktor Normalisasi (Penyebut)</label>
-                      <input type="number" step="any" value={currentPerf.intensityData?.denominator || ''} onChange={(e) => handleIntensityDataChange('denominator', e.target.value)} className="w-full p-2.5 text-xs border border-purple-300 rounded-xl outline-none print:border-none print:bg-transparent" />
+                      <SafeNumericInput value={currentPerf.intensityData?.denominator} onChange={(val: any) => handleIntensityDataChange('denominator', val)} className="w-full p-2.5 text-xs border border-purple-300 rounded-xl outline-none print:border-none print:bg-transparent" />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-purple-900 mb-1.5 print:text-black">3. Satuan Normalisasi</label>
@@ -615,8 +872,8 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
                                 <tr key={item.id} className="hover:bg-slate-50/50">
                                   <td className="p-2.5 font-medium text-slate-700">{item.name}</td>
                                   {sites.map(site => (
-                                    <td key={site} className="p-2 border-l border-slate-100">
-                                      <input type="number" step="any" value={currentPerf.sites?.[site]?.[item.id] ?? ''} onChange={(e) => handleSiteDataChange(site, e.target.value === '' ? null : parseFloat(e.target.value), item.id)} placeholder="0" className="w-full p-2 text-xs font-mono border border-slate-300 rounded-lg text-center outline-none focus:ring-2 focus:ring-emerald-500 print:border-none print:bg-transparent" />
+                                    <td key={site} className="p-2 border-l border-slate-100 relative">
+                                      <SafeNumericInput value={currentPerf.sites?.[site]?.[item.id]} onChange={(val: any) => handleSiteDataChange(site, val, item.id)} className="w-full p-2 text-xs font-mono border border-slate-300 rounded-lg text-center outline-none focus:ring-2 focus:ring-emerald-500 print:border-none print:bg-transparent" />
                                     </td>
                                   ))}
                                   <td className="p-2 border-l border-slate-100 bg-slate-50 text-center font-mono font-bold text-emerald-800 print:bg-transparent print:text-black">{itemTotal > 0 ? itemTotal.toLocaleString('id-ID') : '-'}</td>
@@ -660,7 +917,7 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
                       {sites.map(site => (
                         <tr key={site} className="hover:bg-slate-50/50">
                           <td className="p-2.5 text-xs font-medium text-slate-700">{site}</td>
-                          <td className="p-2"><input type="number" step="any" value={currentPerf.sites?.[site] ?? ''} onChange={(e) => handleSiteDataChange(site, e.target.value === '' ? null : parseFloat(e.target.value))} className="w-full p-2 text-xs font-mono border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500 print:border-none print:bg-transparent" /></td>
+                          <td className="p-2 relative"><SafeNumericInput value={currentPerf.sites?.[site]} onChange={(val: any) => handleSiteDataChange(site, val)} className="w-full p-2 text-xs font-mono border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500 print:border-none print:bg-transparent" /></td>
                           <td className="p-2 text-center print:hidden">{sites.length > 1 && <button onClick={() => handleRemoveSite(site)} className="text-slate-400 hover:text-red-500 text-xs" title="Hapus Lokasi Ini">✕</button>}</td>
                         </tr>
                       ))}
@@ -672,20 +929,71 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
             )}
 
             {details.type === 'narrative' && (
-              <textarea rows={4} value={currentPerf.narrativeValue || ''} onChange={(e) => handleNarrativePerfChange(e.target.value)} placeholder="Uraian kualitatif..." className="w-full p-3 text-xs border border-slate-300 rounded-xl bg-slate-50 outline-none print:border-none print:bg-transparent print:resize-none" />
+              <SafeTextArea 
+                rows={4} 
+                value={currentPerf.narrativeValue} 
+                onChange={handleNarrativePerfChange} 
+                placeholder={getNarrativePlaceholder(currentTopic?.disclosure_code)} 
+                className="w-full p-3 text-xs border border-slate-300 rounded-xl bg-slate-50 outline-none focus:ring-2 focus:ring-emerald-500 print:border-none print:bg-transparent print:resize-none" 
+              />
             )}
             
             {!currentTopic?.disclosure_code.startsWith('IFRS') && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-6 border-t border-slate-100 mt-6 print:border-black">
-                <div><label className="block text-xs font-bold text-slate-700 mb-1">Target Internal ({selectedYear})</label><input type="text" value={currentPerf.target || ''} onChange={(e) => handleMetaChange('target', e.target.value)} className="w-full p-2.5 text-xs border border-slate-300 rounded-xl outline-none bg-slate-50 print:border-none print:bg-transparent" /></div>
-                <div><label className="block text-xs font-bold text-slate-700 mb-1">Tautan Bukti (Evidence)</label><input type="text" value={currentPerf.evidence || ''} onChange={(e) => handleMetaChange('evidence', e.target.value)} className="w-full p-2.5 text-xs border border-slate-300 rounded-xl outline-none bg-slate-50 print:border-none print:bg-transparent" /></div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Target Internal ({selectedYear})</label>
+                  <SafeTextInput 
+                    value={currentPerf.target} 
+                    onChange={(val: string) => handleMetaChange('target', val)} 
+                    placeholder={getTargetPlaceholder(currentTopic?.disclosure_code)}
+                    className="w-full p-2.5 text-xs border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 print:border-none print:bg-transparent" 
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Tautan / File Bukti (Evidence)</label>
+                  <div className="flex items-center gap-2">
+                    <label className={`cursor-pointer border px-3 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 ${isUploading ? 'bg-slate-200 text-slate-400 border-slate-300' : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700 print:hidden'}`}>
+                      {isUploading ? '⏳ Uploading...' : '📁 Unggah File'}
+                      <input type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg" onChange={handleFileUpload} disabled={isUploading} />
+                    </label>
+                    <SafeTextInput 
+                      value={currentPerf.evidence} 
+                      onChange={(val: string) => handleMetaChange('evidence', val)} 
+                      placeholder="Atau paste URL..."
+                      className="flex-1 p-2.5 text-xs border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 print:border-none print:bg-transparent" 
+                    />
+                  </div>
+                  {currentPerf.evidence && (
+                     <div className="mt-2 text-[10px] text-emerald-700 flex items-center justify-between bg-emerald-50 p-1.5 px-3 rounded-lg border border-emerald-200 print:border-none print:bg-transparent">
+                        <div className="flex items-center gap-2">
+                          <span>✅</span>
+                          <a href={currentPerf.evidence} target="_blank" rel="noreferrer" className="hover:underline font-bold truncate max-w-[150px] md:max-w-[250px]">Bukti Terlampir</a>
+                        </div>
+                        <button onClick={handleRemoveEvidence} className="text-red-500 hover:text-red-700 font-bold px-2 print:hidden" title="Hapus File/Link">✕</button>
+                     </div>
+                  )}
+                </div>
               </div>
             )}
+
+            <div className="pt-6 border-t border-slate-100 mt-6 print:border-black">
+              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-2">
+                <span>🌟</span> Sorotan Program & Best Practice ({selectedYear}) <span className="text-[9px] font-normal text-slate-400 bg-slate-100 px-2 py-0.5 rounded ml-2 print:border print:border-slate-300">Opsional</span>
+              </label>
+              <p className="text-[10px] text-slate-500 mb-2">Ceritakan kisah sukses, inovasi, atau inisiatif unggulan yang telah dijalankan perusahaan terkait topik ini.</p>
+              <SafeTextArea 
+                rows={3} 
+                value={currentPerf.bestPractice} 
+                onChange={(val: string) => handleMetaChange('bestPractice', val)} 
+                placeholder={getBestPracticePlaceholder(currentTopic?.disclosure_code || '')}
+                className="w-full p-3 text-xs border border-slate-300 rounded-xl bg-slate-50 outline-none focus:ring-2 focus:ring-emerald-500 print:border-none print:bg-transparent print:resize-none" 
+              />
+            </div>
 
           </div>
         </div>
         
-        {/* FOOTER NAVIGASI */}
         <div className="p-4 border-t border-slate-200 bg-white flex justify-between items-center px-6 print:hidden">
           <div className="flex items-center gap-2">
             <button onClick={() => setActiveTopicId(activeDisclosures[Math.max(0, activeDisclosures.findIndex(d => d.id === activeTopicId) - 1)].id)} className="px-3 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition">← Prev</button>
@@ -694,6 +1002,15 @@ export function PerformanceForm({ disclosures, materialTopicIds, managementData,
           
           <div className="flex items-center gap-3">
             {isSaved && <span className="text-xs text-emerald-600 font-bold animate-pulse">✓ Tersimpan ke Memori!</span>}
+            
+            {/* 🌟 TOMBOL HISTORI AUDIT TRAIL */}
+            <button 
+              onClick={() => setShowAuditModal(true)} 
+              className="text-slate-500 hover:text-slate-800 text-xs font-bold py-2.5 px-4 rounded-xl border border-slate-200 hover:bg-slate-50 transition flex items-center gap-1.5"
+            >
+              <span>🕒</span> Riwayat
+            </button>
+
             <button 
               onClick={handleSaveTopic} 
               className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 px-6 rounded-xl shadow transition flex items-center gap-1.5"
