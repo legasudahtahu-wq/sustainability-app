@@ -260,6 +260,12 @@ export function AuthScreen() {
             {loading ? "Memproses..." : (isLogin ? "Masuk ke Aplikasi" : "Daftar & Hubungkan Akun")}
           </button>
         </form>
+
+        {/* 🌟 LABEL POWERED BY DI SINI */}
+        <div className="mt-8 text-center text-xs text-slate-400">
+          Powered by <span className="font-bold text-slate-700">Shared Value Indonesia</span>
+        </div>
+
       </div>
     </div>
   );
